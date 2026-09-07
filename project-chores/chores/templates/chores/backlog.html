@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>One-Off Backlog</title>
+</head>
+<body>
+    <h1>One-Off Backlog</h1>
+
+    {% if messages %}
+    <ul>
+        {% for message in messages %}
+        <li>{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <form method="post" action="{% url 'backlog' %}">
+        {% csrf_token %}
+        <input type="text" name="title" placeholder="New one-off task" required>
+        <button type="submit">Add</button>
+    </form>
+
+    <table border="1" cellpadding="6">
+        <thead>
+            <tr>
+                <th>Task</th>
+                <th>Status</th>
+                <th>Note</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr>
+                <td>{{ task.title }}</td>
+                <td>{{ task.get_status_display }}</td>
+                <td>{{ task.note }}</td>
+                <td>
+                    {% if task.status == 'pending' %}
+                    <form method="post" action="{% url 'complete_task' task.pk %}" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit">Complete</button>
+                    </form>
+                    <form method="post" action="{% url 'skip_task' task.pk %}" style="display:inline">
+                        {% csrf_token %}
+                        <input type="text" name="note" placeholder="Reason for skipping" required>
+                        <button type="submit">Skip</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">No one-off tasks yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p><a href="{% url 'dashboard' %}">Dashboard</a></p>
+</body>
+</html>

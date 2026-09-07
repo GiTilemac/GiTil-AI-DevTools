@@ -5,7 +5,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from . import services
-from .models import Assignment, Chore, Member, RotationSlot
+from .models import Assignment, Chore, Member, OneOffTask, RotationSlot
 
 
 def make_rotation(chore, *members):
@@ -240,6 +240,74 @@ class HistoryViewTests(TestCase):
         response = self.client.get('/history/')
         entries = list(response.context['entries'])
         self.assertEqual(entries, [self.newer, self.older])
+
+
+class OneOffTaskServiceTests(TestCase):
+    def test_add_task_requires_title(self):
+        with self.assertRaises(ValueError):
+            services.add_one_off_task('')
+
+    def test_add_task_creates_pending_task(self):
+        task = services.add_one_off_task('Fix the fence')
+        self.assertEqual(task.status, OneOffTask.Status.PENDING)
+
+    def test_complete_one_off_task(self):
+        task = services.add_one_off_task('Fix the fence')
+        services.complete_one_off_task(task)
+        task.refresh_from_db()
+        self.assertEqual(task.status, OneOffTask.Status.COMPLETED)
+
+    def test_skip_one_off_task_requires_note(self):
+        task = services.add_one_off_task('Fix the fence')
+        with self.assertRaises(ValueError):
+            services.skip_one_off_task(task, '')
+
+    def test_skip_one_off_task_updates_status_and_note(self):
+        task = services.add_one_off_task('Fix the fence')
+        services.skip_one_off_task(task, 'no materials')
+        task.refresh_from_db()
+        self.assertEqual(task.status, OneOffTask.Status.SKIPPED)
+        self.assertEqual(task.note, 'no materials')
+
+
+class BacklogViewTests(TestCase):
+    def test_get_backlog_returns_200(self):
+        response = self.client.get('/backlog/')
+        self.assertEqual(response.status_code, 200)
+
+    def test_post_with_title_creates_task(self):
+        response = self.client.post('/backlog/', {'title': 'Fix the fence'})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(OneOffTask.objects.filter(title='Fix the fence').exists())
+
+    def test_post_with_blank_title_does_not_create_task(self):
+        response = self.client.post('/backlog/', {'title': '   '}, follow=True)
+        self.assertEqual(OneOffTask.objects.count(), 0)
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(any('title is required' in m for m in messages))
+
+    def test_complete_task_updates_status(self):
+        task = OneOffTask.objects.create(title='Fix the fence')
+        response = self.client.post(f'/tasks/{task.pk}/complete/')
+        task.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(task.status, OneOffTask.Status.COMPLETED)
+
+    def test_skip_task_without_note_is_rejected(self):
+        task = OneOffTask.objects.create(title='Fix the fence')
+        response = self.client.post(f'/tasks/{task.pk}/skip/', {'note': ''}, follow=True)
+        task.refresh_from_db()
+        self.assertEqual(task.status, OneOffTask.Status.PENDING)
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(any('note is required' in m for m in messages))
+
+    def test_skip_task_with_note_updates_status_and_note(self):
+        task = OneOffTask.objects.create(title='Fix the fence')
+        response = self.client.post(f'/tasks/{task.pk}/skip/', {'note': 'no materials'})
+        task.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(task.status, OneOffTask.Status.SKIPPED)
+        self.assertEqual(task.note, 'no materials')
 
 
 class ModelConstraintTests(TestCase):

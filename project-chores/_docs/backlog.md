@@ -28,9 +28,9 @@ Scaffolding already done: `config` project + `chores` app created, `chores` regi
 - [x] No analytics, no aggregation — plain list
 
 ## 5. One-Off Backlog
-- [ ] View: list one-off tasks
-- [ ] Add a one-off task
-- [ ] Mark complete / skip (with note)
+- [x] View: list one-off tasks
+- [x] Add a one-off task
+- [x] Mark complete / skip (with note)
 
 ## 6. Templates & polish
 - [ ] `base.html` with minimal nav (Dashboard / History / Backlog)

@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from .models import Assignment, Chore
+from .models import Assignment, Chore, OneOffTask
 
 
 def current_week_start(today=None):
@@ -72,6 +72,29 @@ def skip(assignment, note):
     assignment.note = note
     assignment.save()
     return assignment
+
+
+def add_one_off_task(title):
+    """Add a new one-off task. A title is mandatory."""
+    if not title:
+        raise ValueError('A title is required to add a task.')
+    return OneOffTask.objects.create(title=title)
+
+
+def complete_one_off_task(task):
+    task.status = OneOffTask.Status.COMPLETED
+    task.save()
+    return task
+
+
+def skip_one_off_task(task, note):
+    """Mark a one-off task skipped. A note is mandatory."""
+    if not note:
+        raise ValueError('A note is required when skipping a task.')
+    task.status = OneOffTask.Status.SKIPPED
+    task.note = note
+    task.save()
+    return task
 
 
 def member_streak(member):
