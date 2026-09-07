@@ -18,10 +18,10 @@ Scaffolding already done: `config` project + `chores` app created, `chores` regi
 - [x] Rotation countdown helper (days left in current week)
 
 ## 3. Chore Dashboard (main view)
-- [ ] View: list each chore's current assignment (member, difficulty)
-- [ ] Text-only streak indicator per member (consecutive completed weeks)
-- [ ] Mark chore complete / skipped (skip requires note)
-- [ ] Link to one-off backlog
+- [x] View: list each chore's current assignment (member, difficulty)
+- [x] Text-only streak indicator per member (consecutive completed weeks)
+- [x] Mark chore complete / skipped (skip requires note)
+- [x] Link to one-off backlog
 
 ## 4. Chore History
 - [ ] View: chronological log of completed / skipped / reassigned assignments, date only

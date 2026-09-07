@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Chore Dashboard</title>
+</head>
+<body>
+    <h1>Chore Dashboard</h1>
+    <p>{{ days_left }} day{{ days_left|pluralize }} left this week</p>
+
+    {% if messages %}
+    <ul>
+        {% for message in messages %}
+        <li>{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <table border="1" cellpadding="6">
+        <thead>
+            <tr>
+                <th>Chore</th>
+                <th>Difficulty</th>
+                <th>Assigned to</th>
+                <th>Streak</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.assignment.chore.name }}</td>
+                <td>{{ row.assignment.chore.get_difficulty_display }}</td>
+                <td>{{ row.assignment.member.name }}</td>
+                <td>{{ row.streak }} week{{ row.streak|pluralize }} consistent</td>
+                <td>
+                    <form method="post" action="{% url 'complete_assignment' row.assignment.pk %}" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit">Complete</button>
+                    </form>
+                    <form method="post" action="{% url 'skip_assignment' row.assignment.pk %}" style="display:inline">
+                        {% csrf_token %}
+                        <input type="text" name="note" placeholder="Reason for skipping" required>
+                        <button type="submit">Skip</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5">No chores set up yet. Add chores, members, and rotation slots in the admin.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p><a href="/backlog/">One-off backlog</a></p>
+</body>
+</html>

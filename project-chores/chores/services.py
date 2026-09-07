@@ -56,3 +56,37 @@ def reassign(assignment, new_member, note):
     assignment.note = note
     assignment.save()
     return assignment
+
+
+def complete(assignment):
+    assignment.status = Assignment.Status.COMPLETED
+    assignment.save()
+    return assignment
+
+
+def skip(assignment, note):
+    """Mark a chore skipped for the week. A note is mandatory."""
+    if not note:
+        raise ValueError('A note is required when skipping a chore.')
+    assignment.status = Assignment.Status.SKIPPED
+    assignment.note = note
+    assignment.save()
+    return assignment
+
+
+def member_streak(member):
+    """Consecutive most-recent weeks where every assignment held by member was completed."""
+    week_starts = (
+        Assignment.objects.filter(member=member)
+        .order_by('-week_start')
+        .values_list('week_start', flat=True)
+        .distinct()
+    )
+    streak = 0
+    for week_start in week_starts:
+        statuses = Assignment.objects.filter(member=member, week_start=week_start).values_list('status', flat=True)
+        if all(status == Assignment.Status.COMPLETED for status in statuses):
+            streak += 1
+        else:
+            break
+    return streak
