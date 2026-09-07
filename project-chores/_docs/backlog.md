@@ -24,8 +24,8 @@ Scaffolding already done: `config` project + `chores` app created, `chores` regi
 - [x] Link to one-off backlog
 
 ## 4. Chore History
-- [ ] View: chronological log of completed / skipped / reassigned assignments, date only
-- [ ] No analytics, no aggregation — plain list
+- [x] View: chronological log of completed / skipped / reassigned assignments, date only
+- [x] No analytics, no aggregation — plain list
 
 ## 5. One-Off Backlog
 - [ ] View: list one-off tasks

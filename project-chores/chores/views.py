@@ -34,3 +34,8 @@ def skip_assignment(request, pk):
     except ValueError as exc:
         messages.error(request, str(exc))
     return redirect('dashboard')
+
+
+def history(request):
+    entries = Assignment.objects.exclude(status=Assignment.Status.ASSIGNED).order_by('-week_start')
+    return render(request, 'chores/history.html', {'entries': entries})
