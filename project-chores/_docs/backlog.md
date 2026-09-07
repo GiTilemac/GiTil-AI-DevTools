@@ -33,9 +33,9 @@ Scaffolding already done: `config` project + `chores` app created, `chores` regi
 - [x] Mark complete / skip (with note)
 
 ## 6. Templates & polish
-- [ ] `base.html` with minimal nav (Dashboard / History / Backlog)
-- [ ] Plain, minimal CSS — no bars/meters/progress visuals
-- [ ] Forms for reassign / skip / add-task with required-note validation
+- [x] `base.html` with minimal nav (Dashboard / History / Backlog)
+- [x] Plain, minimal CSS — no bars/meters/progress visuals
+- [x] Forms for reassign / skip / add-task with required-note validation
 
 ## 7. Housekeeping
 - [ ] `requirements.txt` (pin Django version)

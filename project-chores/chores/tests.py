@@ -211,6 +211,47 @@ class SkipViewTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class ReassignViewTests(TestCase):
+    def setUp(self):
+        self.alice = Member.objects.create(name='Alice')
+        self.bob = Member.objects.create(name='Bob')
+        self.dishes = Chore.objects.create(name='Dishes', difficulty='light')
+        make_rotation(self.dishes, self.alice, self.bob)
+        self.assignment = services.get_or_create_current_assignment(self.dishes)
+        self.url = f'/assignments/{self.assignment.pk}/reassign/'
+
+    def test_valid_reassign_updates_member_status_and_note(self):
+        response = self.client.post(self.url, {'member': self.bob.pk, 'note': 'Alice is sick'})
+        self.assignment.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.assignment.member, self.bob)
+        self.assertEqual(self.assignment.status, Assignment.Status.REASSIGNED)
+        self.assertEqual(self.assignment.note, 'Alice is sick')
+
+    def test_empty_note_is_rejected(self):
+        response = self.client.post(self.url, {'member': self.bob.pk, 'note': ''}, follow=True)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.member, self.alice)
+        self.assertEqual(self.assignment.status, Assignment.Status.ASSIGNED)
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(any('note is required' in m for m in messages))
+
+    def test_missing_member_is_rejected(self):
+        response = self.client.post(self.url, {'member': '', 'note': 'Alice is sick'}, follow=True)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.member, self.alice)
+        self.assertEqual(self.assignment.status, Assignment.Status.ASSIGNED)
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(any('Select a member' in m for m in messages))
+
+    def test_non_numeric_member_is_rejected_not_a_server_error(self):
+        response = self.client.post(self.url, {'member': 'not-an-id', 'note': 'Alice is sick'}, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.member, self.alice)
+        self.assertEqual(self.assignment.status, Assignment.Status.ASSIGNED)
+
+
 class HistoryViewTests(TestCase):
     def setUp(self):
         alice = Member.objects.create(name='Alice')

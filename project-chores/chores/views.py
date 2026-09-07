@@ -3,7 +3,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from . import services
-from .models import Assignment, OneOffTask
+from .models import Assignment, Member, OneOffTask
 
 
 def dashboard(request):
@@ -15,6 +15,7 @@ def dashboard(request):
     return render(request, 'chores/dashboard.html', {
         'rows': rows,
         'days_left': services.days_left_in_week(),
+        'members': Member.objects.all(),
     })
 
 
@@ -31,6 +32,27 @@ def skip_assignment(request, pk):
     note = request.POST.get('note', '').strip()
     try:
         services.skip(assignment, note)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    return redirect('dashboard')
+
+
+@require_POST
+def reassign_assignment(request, pk):
+    assignment = get_object_or_404(Assignment, pk=pk)
+    note = request.POST.get('note', '').strip()
+    member_id = request.POST.get('member')
+    member = None
+    if member_id:
+        try:
+            member = Member.objects.filter(pk=member_id).first()
+        except (ValueError, TypeError):
+            member = None
+    if not member:
+        messages.error(request, 'Select a member to reassign to.')
+        return redirect('dashboard')
+    try:
+        services.reassign(assignment, member, note)
     except ValueError as exc:
         messages.error(request, str(exc))
     return redirect('dashboard')

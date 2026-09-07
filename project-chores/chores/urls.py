@@ -6,6 +6,7 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('assignments/<int:pk>/complete/', views.complete_assignment, name='complete_assignment'),
     path('assignments/<int:pk>/skip/', views.skip_assignment, name='skip_assignment'),
+    path('assignments/<int:pk>/reassign/', views.reassign_assignment, name='reassign_assignment'),
     path('history/', views.history, name='history'),
     path('backlog/', views.backlog, name='backlog'),
     path('tasks/<int:pk>/complete/', views.complete_task, name='complete_task'),

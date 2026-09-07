@@ -1,37 +1,32 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>Chore History</title>
-</head>
-<body>
-    <h1>Chore History</h1>
+{% extends 'chores/base.html' %}
 
-    <table border="1" cellpadding="6">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Chore</th>
-                <th>Member</th>
-                <th>Status</th>
-                <th>Note</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for entry in entries %}
-            <tr>
-                <td>{{ entry.week_start }}</td>
-                <td>{{ entry.chore.name }}</td>
-                <td>{{ entry.member.name }}</td>
-                <td>{{ entry.get_status_display }}</td>
-                <td>{{ entry.note }}</td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="5">No history yet.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+{% block title %}Chore History{% endblock %}
 
-    <p><a href="/">Dashboard</a></p>
-</body>
-</html>
+{% block content %}
+<h1>Chore History</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Chore</th>
+            <th>Member</th>
+            <th>Status</th>
+            <th>Note</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in entries %}
+        <tr>
+            <td>{{ entry.week_start }}</td>
+            <td>{{ entry.chore.name }}</td>
+            <td>{{ entry.member.name }}</td>
+            <td>{{ entry.get_status_display }}</td>
+            <td>{{ entry.note }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">No history yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
