@@ -4,13 +4,13 @@ Derived from `plan.md`. Stack: Django, server-rendered templates only (no JS fra
 Scaffolding already done: `config` project + `chores` app created, `chores` registered in `INSTALLED_APPS`, `templates/` dir wired up.
 
 ## 1. Data model
-- [ ] `Member` model (name)
-- [ ] `Chore` model (name, difficulty: light/medium/heavy)
-- [ ] `RotationSlot` model — ordered rotation position of each member per chore
-- [ ] `Assignment` model — chore + member + week_start + status (assigned/completed/skipped/reassigned) + note
-- [ ] `OneOffTask` model — title + status (pending/completed/skipped) + note
-- [ ] Register all models in `admin.py`
-- [ ] `makemigrations` / `migrate`
+- [x] `Member` model (name)
+- [x] `Chore` model (name, difficulty: light/medium/heavy)
+- [x] `RotationSlot` model — ordered rotation position of each member per chore
+- [x] `Assignment` model — chore + member + week_start + status (assigned/completed/skipped/reassigned) + note
+- [x] `OneOffTask` model — title + status (pending/completed/skipped) + note
+- [x] Register all models in `admin.py`
+- [x] `makemigrations` / `migrate`
 
 ## 2. Rotation engine
 - [ ] Function to compute/create the current week's `Assignment` for each chore, advancing through `RotationSlot` order
