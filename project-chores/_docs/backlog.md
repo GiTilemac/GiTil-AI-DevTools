@@ -13,9 +13,9 @@ Scaffolding already done: `config` project + `chores` app created, `chores` regi
 - [x] `makemigrations` / `migrate`
 
 ## 2. Rotation engine
-- [ ] Function to compute/create the current week's `Assignment` for each chore, advancing through `RotationSlot` order
-- [ ] Manual reassignment: change an assignment's member, require a note, mark status `reassigned`
-- [ ] Rotation countdown helper (days left in current week)
+- [x] Function to compute/create the current week's `Assignment` for each chore, advancing through `RotationSlot` order
+- [x] Manual reassignment: change an assignment's member, require a note, mark status `reassigned`
+- [x] Rotation countdown helper (days left in current week)
 
 ## 3. Chore Dashboard (main view)
 - [ ] View: list each chore's current assignment (member, difficulty)
