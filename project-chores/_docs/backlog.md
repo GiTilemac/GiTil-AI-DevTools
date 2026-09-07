@@ -38,7 +38,7 @@ Scaffolding already done: `config` project + `chores` app created, `chores` regi
 - [x] Forms for reassign / skip / add-task with required-note validation
 
 ## 7. Housekeeping
-- [ ] `requirements.txt` (pin Django version)
+- [x] `requirements.txt` (pin Django version)
 - [x] `.gitignore` (`.venv/`, `db.sqlite3`, `__pycache__/`)
 - [x] Basic tests: rotation advancement logic, streak calculation, skip/reassign validation, dashboard/history views, model constraints
-- [ ] Seed/fixture data or a management command for initial members + chores
+- [x] Seed/fixture data or a management command for initial members + chores
