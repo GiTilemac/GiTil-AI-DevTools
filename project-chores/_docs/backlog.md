@@ -39,6 +39,6 @@ Scaffolding already done: `config` project + `chores` app created, `chores` regi
 
 ## 7. Housekeeping
 - [ ] `requirements.txt` (pin Django version)
-- [ ] `.gitignore` (`.venv/`, `db.sqlite3`, `__pycache__/`)
-- [ ] Basic tests: rotation advancement logic, streak calculation
+- [x] `.gitignore` (`.venv/`, `db.sqlite3`, `__pycache__/`)
+- [x] Basic tests: rotation advancement logic, streak calculation, skip/reassign validation, dashboard/history views, model constraints
 - [ ] Seed/fixture data or a management command for initial members + chores
