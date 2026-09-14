@@ -89,4 +89,36 @@ describe('PlayPage', () => {
 
     expect(screen.getByText(/to save your score/i)).toBeInTheDocument();
   });
+
+  it('cannot change mode once the game is running (spec F1)', async () => {
+    renderWithProviders(<PlayPage />, { route: '/play' });
+
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    await advance(150);
+
+    const passThroughBtn = screen.getByRole('radio', { name: 'Pass-through' });
+    const wallsBtn = screen.getByRole('radio', { name: 'Walls' });
+    expect(wallsBtn).toBeDisabled();
+
+    fireEvent.click(wallsBtn);
+
+    expect(passThroughBtn).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('"Play again" resets the board to idle, in the same mode, after game-over', async () => {
+    renderWithProviders(<PlayPage />, { route: '/play' });
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Walls' }));
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    await advance(150 * 12);
+
+    expect(screen.getByText(/final score/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /play again/i }));
+
+    expect(screen.queryByText(/final score/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/press an arrow key to start/i)).toBeInTheDocument();
+    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Walls' })).toHaveAttribute('aria-checked', 'true');
+  });
 });

@@ -8,6 +8,7 @@ from app.game import (
     create_initial_state,
     create_rng,
     next_head_position,
+    set_direction,
     step,
 )
 from app.models import Direction
@@ -51,3 +52,45 @@ def test_step_is_a_noop_once_game_over() -> None:
     state = state.model_copy(update={"status": GameStatus.GAME_OVER})
 
     assert step(state, rng) == state
+
+
+def test_step_ends_the_game_on_self_collision() -> None:
+    rng = create_rng(1)
+    board = BoardSize(width=10, height=10)
+    state = create_initial_state(GameMode.WALLS, rng, board=board)
+    # Head at (5,5) moving UP lands on (5,4), which is body segment index 2
+    # (not the tail, which moves out of the way) -> must be a collision.
+    state = state.model_copy(
+        update={
+            "snake": [
+                Point(x=5, y=5),
+                Point(x=9, y=9),
+                Point(x=5, y=4),
+                Point(x=1, y=1),
+                Point(x=0, y=0),
+            ],
+            "direction": Direction.UP,
+            "food": Point(x=8, y=8),
+        }
+    )
+
+    assert step(state, rng).status == GameStatus.GAME_OVER
+
+
+def test_set_direction_buffers_a_valid_change() -> None:
+    rng = create_rng(1)
+    state = create_initial_state(GameMode.WALLS, rng)
+    assert set_direction(state, Direction.UP).pending_direction == Direction.UP
+
+
+def test_set_direction_ignores_an_immediate_180_degree_reversal() -> None:
+    rng = create_rng(1)
+    state = create_initial_state(GameMode.WALLS, rng)  # facing RIGHT, length 3
+    assert set_direction(state, Direction.LEFT).pending_direction is None
+
+
+def test_set_direction_is_a_noop_once_game_over() -> None:
+    rng = create_rng(1)
+    state = create_initial_state(GameMode.WALLS, rng).model_copy(update={"status": GameStatus.GAME_OVER})
+
+    assert set_direction(state, Direction.UP) == state

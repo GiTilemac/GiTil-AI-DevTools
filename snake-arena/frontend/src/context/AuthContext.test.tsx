@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { backendClient } from '../api/backendClient';
 import { AuthProvider, useAuth } from './AuthContext';
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -16,6 +17,13 @@ describe('useAuth', () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     expect(result.current.user).toBeNull();
     expect(result.current.error).toBeNull();
+  });
+
+  it('never calls getCurrentUser on mount - a fresh page load always starts logged out (spec 2.4/3.9)', () => {
+    const spy = vi.spyOn(backendClient.auth, 'getCurrentUser');
+    renderHook(() => useAuth(), { wrapper });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it('signup sets the current user', async () => {

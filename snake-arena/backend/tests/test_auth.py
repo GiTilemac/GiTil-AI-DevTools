@@ -77,3 +77,11 @@ def test_logout_revokes_the_token(client: TestClient, auth_headers: dict) -> Non
 def test_logout_without_a_token_is_unauthorized(client: TestClient) -> None:
     response = client.post("/auth/logout")
     assert response.status_code == 401
+
+
+def test_logout_twice_rejects_the_second_attempt(client: TestClient, auth_headers: dict) -> None:
+    first = client.post("/auth/logout", headers=auth_headers)
+    assert first.status_code == 204
+
+    second = client.post("/auth/logout", headers=auth_headers)
+    assert second.status_code == 401
