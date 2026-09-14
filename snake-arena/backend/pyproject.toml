@@ -1,0 +1,24 @@
+[project]
+name = "snake-arena-backend"
+version = "0.1.0"
+description = "FastAPI backend implementing ../openapi.yaml for the Snake Arena frontend"
+readme = "README.md"
+authors = [
+    { name = "Tilemachos Doganis", email = "dtilemac@hotmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.9",
+    "bcrypt>=4.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.27",
+]
+
+[tool.uv]
+package = false

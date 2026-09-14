@@ -1,0 +1,357 @@
+openapi: 3.0.3
+info:
+  title: Snake Arena Backend API
+  description: >
+    Backend contract for the Snake Arena frontend's API facade
+    (`frontend/src/api/backendClient.ts`, see `_docs/spec.md` §3.4), which
+    still talks to an in-memory mock rather than this contract. `backend/`
+    implements this spec; swapping the frontend over means reimplementing
+    `backendClient.ts` against real HTTP calls without changing its public
+    shape.
+  version: "1.0.0"
+servers:
+  - url: /
+
+tags:
+  - name: auth
+  - name: leaderboard
+  - name: watch
+
+security: []
+
+paths:
+  /auth/signup:
+    post:
+      tags: [auth]
+      operationId: signup
+      summary: Create a new account and start a session for it
+      description: >
+        Mirrors `backendClient.auth.signup`. Fails if the username is already
+        taken (case-insensitive). Returns a bearer token the client must
+        send as `Authorization: Bearer <token>` on subsequent authenticated
+        requests.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupInput'
+      responses:
+        '201':
+          description: Account created; bearer token issued for the new user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          description: Username already taken (case-insensitive match).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackendError'
+              example:
+                code: USERNAME_TAKEN
+                message: 'Username "PixelViper" is already taken.'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Log in with a username and password
+      description: >
+        Mirrors `backendClient.auth.login`. Returns a bearer token the
+        client must send as `Authorization: Bearer <token>` on subsequent
+        authenticated requests.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+      responses:
+        '200':
+          description: Bearer token issued for the matched user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: No user matches the given username/password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackendError'
+              example:
+                code: INVALID_CREDENTIALS
+                message: 'Invalid username or password.'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: End the current session
+      description: Mirrors `backendClient.auth.logout`. Idempotent.
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Session ended (or there was none).
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentUser
+      summary: Get the currently authenticated user, if any
+      description: >
+        Mirrors `backendClient.auth.getCurrentUser`. Callable by guests: a
+        missing/invalid session is not an error, it just returns `null`. The
+        frontend never calls this on page load by design (a fresh load always
+        starts logged out), but a real backend must still serve it correctly
+        for the session-restoration case described in spec §3.9.
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: The current user, or `null` if not authenticated.
+          content:
+            application/json:
+              schema:
+                type: object
+                nullable: true
+                allOf:
+                  - $ref: '#/components/schemas/User'
+
+  /leaderboard:
+    get:
+      tags: [leaderboard]
+      operationId: getLeaderboard
+      summary: Get all-time high scores
+      description: >
+        Mirrors `backendClient.leaderboard.getLeaderboard`. Returns every
+        entry, sorted by score descending.
+      security: []
+      responses:
+        '200':
+          description: All leaderboard entries, sorted by score descending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaderboardEntry'
+    post:
+      tags: [leaderboard]
+      operationId: submitScore
+      summary: Submit a finished game's score
+      description: >
+        Mirrors `backendClient.leaderboard.submitScore`. Per spec §2.4/F2,
+        only a signed-in player's score is ever submitted — the frontend
+        makes this call a no-op for guests — so the backend must require and
+        trust its own session rather than the request body alone; `username`
+        in the request is redundant with the session and should be ignored
+        (or validated to match) server-side rather than trusted as-is.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitScoreInput'
+      responses:
+        '200':
+          description: The re-sorted leaderboard, including the new entry.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaderboardEntry'
+        '401':
+          description: No active session; score was not recorded.
+
+  /watch/live:
+    get:
+      tags: [watch]
+      operationId: watchLive
+      summary: Live feed of the always-on demo bot's game state
+      description: >
+        Mirrors `backendClient.watch.subscribe`, which fires immediately with
+        the current state and then again on every tick (~150ms, see spec
+        §3.3) until the caller unsubscribes. Modeled here as a
+        server-sent-events stream, since that push shape (immediate current
+        state, then a tick per interval, held open until the client
+        disconnects) is the closest REST-friendly equivalent to the mock's
+        subscribe/unsubscribe contract; a real backend is free to use
+        WebSocket instead as long as it preserves "fires with current state
+        immediately, then one message per tick."
+      security: []
+      responses:
+        '200':
+          description: >
+            An open `text/event-stream` connection; each event's `data` is a
+            JSON-encoded `GameState`. The stream never ends on its own — the
+            client disconnects to unsubscribe.
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/GameState'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Bearer-token auth (see spec §3.9: "session cookie/JWT based" — this
+        implementation chose an opaque bearer token over a cookie). The mock
+        keeps this as an in-memory `currentUserId`; a real backend issues a
+        token on signup/login and revokes it on logout.
+
+  schemas:
+    User:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [user, token]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          description: 'Opaque bearer token; send as `Authorization: Bearer <token>`.'
+
+    SignupInput:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    LoginInput:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    GameMode:
+      type: string
+      enum: [pass-through, walls]
+
+    LeaderboardEntry:
+      type: object
+      required: [id, username, score, mode, achievedAt]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        score:
+          type: integer
+        mode:
+          $ref: '#/components/schemas/GameMode'
+        achievedAt:
+          type: string
+          format: date-time
+
+    SubmitScoreInput:
+      type: object
+      required: [username, score, mode]
+      properties:
+        username:
+          type: string
+        score:
+          type: integer
+        mode:
+          $ref: '#/components/schemas/GameMode'
+
+    Point:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: integer
+        y:
+          type: integer
+
+    Direction:
+      type: string
+      enum: [UP, DOWN, LEFT, RIGHT]
+
+    GameStatus:
+      type: string
+      enum: [idle, running, game-over]
+
+    BoardSize:
+      type: object
+      required: [width, height]
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
+
+    GameState:
+      type: object
+      required:
+        - board
+        - mode
+        - snake
+        - direction
+        - pendingDirection
+        - food
+        - score
+        - status
+        - tickCount
+      properties:
+        board:
+          $ref: '#/components/schemas/BoardSize'
+        mode:
+          $ref: '#/components/schemas/GameMode'
+        snake:
+          type: array
+          description: Snake body segments; index 0 is the head.
+          items:
+            $ref: '#/components/schemas/Point'
+        direction:
+          $ref: '#/components/schemas/Direction'
+        pendingDirection:
+          type: string
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Direction'
+        food:
+          $ref: '#/components/schemas/Point'
+        score:
+          type: integer
+        status:
+          $ref: '#/components/schemas/GameStatus'
+        tickCount:
+          type: integer
+
+    BackendError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [USERNAME_TAKEN, INVALID_CREDENTIALS]
+        message:
+          type: string
