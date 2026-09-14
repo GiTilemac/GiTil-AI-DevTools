@@ -10,6 +10,11 @@ everything is mocked — but all mock/network calls are centralized behind a
 single facade so a real backend can be swapped in later without touching
 pages, components, or hooks.
 
+All application code lives under `frontend/` (a plain React + TypeScript +
+Vite project); paths below (`src/...`) are relative to that directory. Run
+all commands (`npm install`, `npm run dev`, `npm run test:run`, etc.) from
+inside `frontend/`.
+
 ## Requirements (as given)
 
 - Build the Snake game with two modes: pass-through and walls.

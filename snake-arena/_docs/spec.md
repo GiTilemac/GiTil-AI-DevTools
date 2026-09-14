@@ -4,6 +4,9 @@ Status: implemented (frontend-only, mocked backend). See [`plan.md`](plan.md)
 for how this was scoped and decided; this document is the reference spec for
 what the product does and how it's built.
 
+All application code lives under `frontend/`; every path referenced below
+(`src/...`) is relative to that directory.
+
 ---
 
 ## 1. Overview
