@@ -6,7 +6,8 @@ import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.store import UserRecord, store
+from app.db_models import UserORM
+from app.store import store
 
 # auto_error=False so a missing header doesn't 403 before we can decide
 # whether the endpoint requires auth (see `get_optional_user`).
@@ -21,7 +22,7 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("ascii"))
 
 
-def _resolve(credentials: HTTPAuthorizationCredentials | None) -> UserRecord | None:
+def _resolve(credentials: HTTPAuthorizationCredentials | None) -> UserORM | None:
     if credentials is None:
         return None
     return store.resolve_token(credentials.credentials)
@@ -31,12 +32,12 @@ class CurrentSession:
     """The authenticated user plus the raw token that authenticated them,
     so an endpoint like logout can revoke exactly that token."""
 
-    def __init__(self, user: UserRecord, token: str) -> None:
+    def __init__(self, user: UserORM, token: str) -> None:
         self.user = user
         self.token = token
 
 
-async def get_current_session(
+def get_current_session(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> CurrentSession:
     """Dependency for endpoints that require authentication."""
@@ -46,14 +47,14 @@ async def get_current_session(
     return CurrentSession(user=user, token=credentials.credentials)
 
 
-async def get_current_user(session: CurrentSession = Depends(get_current_session)) -> UserRecord:
+def get_current_user(session: CurrentSession = Depends(get_current_session)) -> UserORM:
     """Dependency for endpoints that need the authenticated user but not
     the raw token."""
     return session.user
 
 
-async def get_optional_user(
+def get_optional_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-) -> UserRecord | None:
+) -> UserORM | None:
     """Dependency for endpoints callable by guests, e.g. GET /auth/me."""
     return _resolve(credentials)

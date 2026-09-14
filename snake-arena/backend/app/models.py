@@ -75,7 +75,7 @@ class LeaderboardEntry(BaseModel):
     mode: GameMode
     achieved_at: datetime = Field(alias="achievedAt")
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "from_attributes": True}
 
 
 class SubmitScoreInput(BaseModel):
