@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { backendClient, BackendError, resetWatchState } from './backendClient';
-import { resetDb } from './mockDb';
+import { backendClient, BackendError } from './backendClient';
 
 describe('backendClient.auth', () => {
   it('signup creates a user and logs them in', async () => {
@@ -46,6 +45,10 @@ describe('backendClient.auth', () => {
     expect(current).toBeNull();
   });
 
+  it('logout without being logged in does not throw', async () => {
+    await expect(backendClient.auth.logout()).resolves.toBeUndefined();
+  });
+
   it('getCurrentUser is null when nobody is logged in', async () => {
     const current = await backendClient.auth.getCurrentUser();
     expect(current).toBeNull();
@@ -61,16 +64,26 @@ describe('backendClient.leaderboard', () => {
     }
   });
 
-  it('submitScore inserts a new entry and re-sorts the board', async () => {
+  it('submitScore inserts a new entry (as the authenticated user) and re-sorts the board', async () => {
+    await backendClient.auth.signup({ username: 'challenger', password: 'pw' });
     const before = await backendClient.leaderboard.getLeaderboard();
     const topScore = before[0].score;
+
     const updated = await backendClient.leaderboard.submitScore({
       username: 'challenger',
       score: topScore + 50,
       mode: 'walls',
     });
+
     expect(updated[0].username).toBe('challenger');
     expect(updated[0].score).toBe(topScore + 50);
+  });
+
+  it('submitScore rejects when nobody is logged in', async () => {
+    await backendClient.auth.logout();
+    await expect(
+      backendClient.leaderboard.submitScore({ username: 'ghost', score: 10, mode: 'walls' }),
+    ).rejects.toThrow();
   });
 });
 
@@ -81,36 +94,37 @@ describe('backendClient.watch', () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    resetDb();
-    resetWatchState();
   });
 
-  it('fires immediately on subscribe and again on each simulated tick', () => {
+  it('fires immediately on subscribe and again on each simulated tick', async () => {
     const updates: number[] = [];
     const unsubscribe = backendClient.watch.subscribe((state) => {
       updates.push(state.tickCount);
     });
 
+    // The initial state arrives over a (mocked) SSE connection, which
+    // delivers it a microtask after subscribing rather than synchronously.
+    await Promise.resolve();
     expect(updates).toHaveLength(1);
 
-    vi.advanceTimersByTime(150);
+    await vi.advanceTimersByTimeAsync(150);
     expect(updates.length).toBeGreaterThanOrEqual(2);
 
-    vi.advanceTimersByTime(150);
+    await vi.advanceTimersByTimeAsync(150);
     expect(updates.length).toBeGreaterThanOrEqual(3);
 
     unsubscribe();
   });
 
-  it('stops delivering updates after unsubscribe', () => {
+  it('stops delivering updates after unsubscribe', async () => {
     const updates: number[] = [];
     const unsubscribe = backendClient.watch.subscribe((state) => {
       updates.push(state.tickCount);
     });
-    vi.advanceTimersByTime(150);
+    await vi.advanceTimersByTimeAsync(150);
     const countAtUnsubscribe = updates.length;
     unsubscribe();
-    vi.advanceTimersByTime(600);
+    await vi.advanceTimersByTimeAsync(600);
     expect(updates.length).toBe(countAtUnsubscribe);
   });
 });

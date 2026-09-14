@@ -1,8 +1,4 @@
-import { advanceBotGame, createBotGame, type BotGame } from '../game/bot';
-import { TICK_INTERVAL_MS } from '../game/constants';
-import type { GameMode, GameState } from '../game/types';
-import { delay } from './latency';
-import { db } from './mockDb';
+import type { GameState } from '../game/types';
 import type { LeaderboardEntry, LoginInput, SignupInput, SubmitScoreInput, User } from './types';
 
 export type BackendErrorCode = 'USERNAME_TAKEN' | 'INVALID_CREDENTIALS';
@@ -17,121 +13,117 @@ export class BackendError extends Error {
   }
 }
 
-function toUser(id: string, username: string): User {
-  return { id, username };
+const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
+interface AuthResponse {
+  user: User;
+  token: string;
 }
 
-function nextId(prefix: string): string {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
-}
+// Bearer token for the current session. Deliberately kept in memory only
+// (never localStorage) so a page reload still starts logged out, matching
+// the product decision in spec §2.4/§3.9.
+let authToken: string | null = null;
 
-let botGame: BotGame | null = null;
-let watchInterval: ReturnType<typeof setInterval> | null = null;
-const watchSubscribers = new Set<(state: GameState) => void>();
+async function request<T>(path: string, init: RequestInit = {}, requireAuth = false): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (init.body) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (requireAuth && authToken) {
+    headers.set('Authorization', `Bearer ${authToken}`);
+  }
 
-function tickWatch(): void {
-  if (!botGame) return;
-  botGame = advanceBotGame(botGame);
-  watchSubscribers.forEach((cb) => cb(botGame!.state));
+  const response = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    if (body && typeof body.detail === 'object' && body.detail?.code) {
+      throw new BackendError(body.detail.code, body.detail.message);
+    }
+    throw new Error(`Request to ${path} failed with status ${response.status}`);
+  }
+
+  return body as T;
 }
 
 /**
  * The single facade for everything "backend". Pages, hooks, and context
- * only ever talk to this object — never to mockDb/game internals directly
- * — so swapping in a real HTTP backend later only touches this file.
+ * only ever talk to this object — never call `fetch`/`EventSource`
+ * directly — so the backend (mocked in tests, real over HTTP otherwise)
+ * stays swappable behind this one file.
  */
 export const backendClient = {
   auth: {
     async signup(input: SignupInput): Promise<User> {
-      const username = input.username.trim();
-      if (db.users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
-        throw new BackendError('USERNAME_TAKEN', `Username "${username}" is already taken.`);
-      }
-      const user = { id: nextId('user'), username, password: input.password };
-      db.users.push(user);
-      db.currentUserId = user.id;
-      return delay(toUser(user.id, user.username));
+      const { user, token } = await request<AuthResponse>('/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      authToken = token;
+      return user;
     },
 
     async login(input: LoginInput): Promise<User> {
-      const username = input.username.trim();
-      const match = db.users.find(
-        (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === input.password,
-      );
-      if (!match) {
-        throw new BackendError('INVALID_CREDENTIALS', 'Invalid username or password.');
-      }
-      db.currentUserId = match.id;
-      return delay(toUser(match.id, match.username));
+      const { user, token } = await request<AuthResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      authToken = token;
+      return user;
     },
 
     async logout(): Promise<void> {
-      db.currentUserId = null;
-      return delay(undefined);
+      if (!authToken) {
+        return;
+      }
+      try {
+        await request<void>('/auth/logout', { method: 'POST' }, true);
+      } catch {
+        // A 401 here just means the token was already invalid server-side
+        // (e.g. stale/expired) - logout is idempotent either way.
+      } finally {
+        authToken = null;
+      }
     },
 
     async getCurrentUser(): Promise<User | null> {
-      const match = db.users.find((u) => u.id === db.currentUserId);
-      return delay(match ? toUser(match.id, match.username) : null);
+      return request<User | null>('/auth/me', {}, true);
     },
   },
 
   leaderboard: {
     async getLeaderboard(): Promise<LeaderboardEntry[]> {
-      const sorted = [...db.leaderboard].sort((a, b) => b.score - a.score);
-      return delay(sorted);
+      return request<LeaderboardEntry[]>('/leaderboard');
     },
 
     async submitScore(input: SubmitScoreInput): Promise<LeaderboardEntry[]> {
-      const entry: LeaderboardEntry = {
-        id: nextId('score'),
-        username: input.username,
-        score: input.score,
-        mode: input.mode as GameMode,
-        achievedAt: new Date().toISOString(),
-      };
-      db.leaderboard.push(entry);
-      db.leaderboard.sort((a, b) => b.score - a.score);
-      return delay([...db.leaderboard]);
+      return request<LeaderboardEntry[]>(
+        '/leaderboard',
+        { method: 'POST', body: JSON.stringify(input) },
+        true,
+      );
     },
   },
 
   watch: {
     /**
-     * Subscribes to a live feed of the (single, always-on) demo bot's
-     * game state. Fires immediately with the current state, then on
-     * every simulated tick. A single shared interval drives all
-     * subscribers; it starts on the first subscriber and stops when
-     * the last one unsubscribes.
+     * Subscribes to the live feed of the (single, always-on) demo bot's
+     * game state via server-sent events. Fires immediately with the
+     * current state, then again on every server tick, until the caller
+     * unsubscribes (which closes the connection).
      */
-    subscribe(onUpdate: (state: GameState) => void, intervalMs: number = TICK_INTERVAL_MS): () => void {
-      if (!botGame) {
-        botGame = createBotGame();
-      }
-      watchSubscribers.add(onUpdate);
-      onUpdate(botGame.state);
-
-      if (!watchInterval) {
-        watchInterval = setInterval(tickWatch, intervalMs);
-      }
-
-      return () => {
-        watchSubscribers.delete(onUpdate);
-        if (watchSubscribers.size === 0 && watchInterval) {
-          clearInterval(watchInterval);
-          watchInterval = null;
-        }
+    subscribe(onUpdate: (state: GameState) => void): () => void {
+      const source = new EventSource(`${BASE_URL}/watch/live`);
+      source.onmessage = (event) => {
+        onUpdate(JSON.parse(event.data) as GameState);
       };
+      return () => source.close();
     },
   },
 };
-
-/** Resets the shared bot-watch state. Used between tests for isolation. */
-export function resetWatchState(): void {
-  if (watchInterval) {
-    clearInterval(watchInterval);
-    watchInterval = null;
-  }
-  watchSubscribers.clear();
-  botGame = null;
-}
