@@ -1,14 +1,22 @@
 # Snake Arena — Project Specification
 
+> **Status note:** this document records how the project was originally
+> scoped, as a *client-only, mocked-backend* app. A real backend (FastAPI +
+> SQLAlchemy/SQLite) has since been built and wired up — see
+> `context-summary.md` for current state and `../AGENTS.md` for pointers.
+> The scoping decisions and frontend architecture below are still accurate;
+> statements about there being no real backend / everything being mocked
+> are not.
+
 ## Goal
 
-An interactive, client-only Snake game web app that doubles as a foundation for
-future multiplayer features. Two playable game modes, plus interactive mockups
-for the multiplayer experience: authentication, a leaderboard, and spectating
-("watching") another player currently in a game. No real backend exists yet —
-everything is mocked — but all mock/network calls are centralized behind a
-single facade so a real backend can be swapped in later without touching
-pages, components, or hooks.
+An interactive Snake game web app that doubles as a foundation for future
+multiplayer features. Two playable game modes, plus the multiplayer
+experience: authentication, a leaderboard, and spectating ("watching")
+another player currently in a game. Started as a client-only build with
+everything mocked behind a single facade, specifically so a real backend
+could be swapped in later without touching pages, components, or hooks —
+that swap has since happened (see status note above).
 
 All application code lives under `frontend/` (a plain React + TypeScript +
 Vite project); paths below (`src/...`) are relative to that directory. Run
@@ -61,11 +69,13 @@ backendClient.leaderboard.submitScore(input) -> Promise<LeaderboardEntry[]>
 backendClient.watch.subscribe(onUpdate, intervalMs?) -> unsubscribe fn
 ```
 
-Backed by `src/api/mockDb.ts` (an in-memory "database": users, seeded
-leaderboard, current user id) and `src/api/latency.ts` (wraps values in a
-Promise with simulated network delay, skipped under test). Errors are typed
-(`BackendError` with `USERNAME_TAKEN` / `INVALID_CREDENTIALS` codes) so the UI
-has something concrete to branch on.
+Originally backed by an in-memory mock (`src/api/mockDb.ts` + simulated
+latency); now backed by real `fetch`/`EventSource` calls against the
+FastAPI backend in `../backend/` (base URL via `VITE_API_BASE_URL`,
+default `127.0.0.1:8000`) — `mockDb.ts` and the latency wrapper were
+deleted once the swap happened. Errors are typed (`BackendError` with
+`USERNAME_TAKEN` / `INVALID_CREDENTIALS` codes) so the UI has something
+concrete to branch on.
 
 `watch.subscribe` owns a single shared bot game and interval; the interval
 starts on the first subscriber and stops when the last one unsubscribes, so
@@ -142,8 +152,10 @@ split into:
 
 ## Explicitly out of scope (for now)
 
-- A real backend / persistence layer.
-- Auth session persistence across page reloads.
+- ~~A real backend / persistence layer~~ — done, see status note at top.
+- Auth session persistence across page reloads (still deliberate — the
+  bearer token is kept in memory only by design, not because there's no
+  backend to persist it against; see `spec.md` §2.4/§3.9).
 - A lobby of multiple simultaneously-spectatable players (one always-on bot
   stands in for "watch a live player").
 - Any styling framework beyond plain CSS/CSS Modules.

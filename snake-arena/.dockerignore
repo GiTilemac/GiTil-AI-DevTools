@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.vite
+frontend/*.tsbuildinfo
+
+backend/.venv
+backend/**/__pycache__
+backend/**/*.pyc
+backend/.pytest_cache
+backend/*.db
+backend/*.sqlite3
+
+.git
+_docs

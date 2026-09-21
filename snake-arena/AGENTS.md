@@ -1,13 +1,12 @@
 ## Snake Arena
 
-The frontend lives in `frontend/` (React + TypeScript + Vite) and still
-talks to a mocked backend via the single facade at
-`frontend/src/api/backendClient.ts` — never bypass it. A real backend now
-exists in `backend/` (FastAPI) implementing the contract in
-`openapi.yaml`, but the frontend has not been wired up to it yet; wiring
-that up means reimplementing `backendClient.ts` against real HTTP calls
-without changing its public shape. Full spec: `_docs/plan.md` and
-`_docs/spec.md`.
+The frontend lives in `frontend/` (React + TypeScript + Vite) and talks to
+the real backend in `backend/` (FastAPI + SQLAlchemy/SQLite) over
+HTTP/SSE, via the single facade at `frontend/src/api/backendClient.ts` —
+never bypass it. The backend implements the contract in `openapi.yaml`.
+Full spec: `_docs/plan.md` and `_docs/spec.md`; current project state and
+recent history: `_docs/context-summary.md` (keep that one updated as
+things change — the spec docs are not).
 
 Commands (run from inside `frontend/`): `npm run dev`, `npm run test:run`,
 `npm run typecheck`, `npm run build`.
