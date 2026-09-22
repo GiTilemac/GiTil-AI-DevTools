@@ -27,8 +27,7 @@ DATABASE_URL=postgresql+psycopg://user:password@host:5432/dbname
 ```
 
 See `../docker-compose.yml` for a ready-to-run app + Postgres stack
-(`docker compose up --build` from the repo root), or `../README.md` for
-other Docker options.
+(`docker compose up --build` from the repo root, see `../README.md`).
 
 The bot/watch simulation behind `/watch/live` is unrelated ephemeral
 runtime state (not user data) and always stays in-memory, regardless of

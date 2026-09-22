@@ -14,48 +14,12 @@ project state, see [`_docs/`](_docs/).
 
 ## Running with Docker
 
-The `Dockerfile` builds the frontend with Node, then copies the built
-static files into a Python image that runs the backend — the backend
-serves both the API and the frontend from a single container/port.
-
-Build:
-
-```bash
-docker build -t snake-arena .
-```
-
-Run, mounting a named volume for the SQLite file so accounts/leaderboard
-data survive across container restarts instead of resetting every time
-(into its own subdirectory, not `/app` itself, which would shadow the app
-code):
-
-```bash
-docker run --rm -p 8000:8000 -v snake-arena-db:/app/data -e DATABASE_URL=sqlite:////app/data/snake_arena.db snake-arena
-```
-
-Then open http://localhost:8000. The `snake-arena-db` volume is created
-automatically on first run and reused (with all prior data) on every run
-after that — `docker volume rm snake-arena-db` if you ever want a clean
-slate.
-
-If you instead want a throwaway database that resets every run (e.g. for
-a quick one-off demo), drop the volume and `DATABASE_URL` override:
-
-```bash
-docker run --rm -p 8000:8000 snake-arena
-```
-
-To point at a different database instead — Postgres is supported out of
-the box (the `psycopg` driver is bundled) — set `DATABASE_URL`:
-
-```bash
-docker run --rm -p 8000:8000 -e DATABASE_URL=postgresql+psycopg://user:pass@host/db snake-arena
-```
-
-### Running with Postgres via Docker Compose
-
-`docker-compose.yml` runs the app alongside a Postgres container, wired
-together and with data persisted in a named volume by default:
+`docker-compose.yml` (repo root) runs the app as two services: `app` (the
+`Dockerfile` image — builds the frontend with Node, then copies the built
+static files into a Python image that runs the backend, which serves both
+the API and the frontend from a single container/port) and `db`
+(`postgres:16-alpine`), wired together via `DATABASE_URL` with Postgres
+data persisted in a named volume:
 
 ```bash
 docker compose up --build
