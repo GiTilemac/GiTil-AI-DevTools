@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: snake
+      POSTGRES_PASSWORD: snake
+      POSTGRES_DB: snake_arena
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snake -d snake_arena"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://snake:snake@db:5432/snake_arena
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pg-data:

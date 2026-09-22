@@ -18,9 +18,17 @@ by the `DATABASE_URL` environment variable:
   `tests/conftest.py`, regardless of `DATABASE_URL` in your shell.
 
 No SQLite-specific SQL or syntax is used anywhere in the app, so pointing
-`DATABASE_URL` at another backend is meant to be the only change needed
-to move databases — e.g. Postgres later via `postgresql+psycopg://...`
-once a Postgres driver (`uv add psycopg[binary]`) is added.
+`DATABASE_URL` at another backend is the only change needed to move
+databases. Postgres is supported out of the box (the `psycopg[binary]`
+driver is a dependency already):
+
+```
+DATABASE_URL=postgresql+psycopg://user:password@host:5432/dbname
+```
+
+See `../docker-compose.yml` for a ready-to-run app + Postgres stack
+(`docker compose up --build` from the repo root), or `../README.md` for
+other Docker options.
 
 The bot/watch simulation behind `/watch/live` is unrelated ephemeral
 runtime state (not user data) and always stays in-memory, regardless of

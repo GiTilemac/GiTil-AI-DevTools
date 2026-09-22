@@ -3,8 +3,9 @@
 An interactive Snake game with two play modes, plus a full multiplayer
 surface: accounts, a leaderboard, and watching another player currently in
 a game. The frontend (`frontend/`, React + TypeScript + Vite) talks to a
-real backend (`backend/`, FastAPI + SQLAlchemy/SQLite) over HTTP/SSE
-through a single facade, `frontend/src/api/backendClient.ts`.
+real backend (`backend/`, FastAPI + SQLAlchemy, SQLite by default or
+Postgres) over HTTP/SSE through a single facade,
+`frontend/src/api/backendClient.ts`.
 
 For local frontend/backend development (without Docker), see
 [`frontend/README.md`](frontend/README.md) and
@@ -44,12 +45,27 @@ a quick one-off demo), drop the volume and `DATABASE_URL` override:
 docker run --rm -p 8000:8000 snake-arena
 ```
 
-To point at a different database instead (e.g. Postgres, once a driver is
-added — see `backend/README.md`), set `DATABASE_URL`:
+To point at a different database instead — Postgres is supported out of
+the box (the `psycopg` driver is bundled) — set `DATABASE_URL`:
 
 ```bash
 docker run --rm -p 8000:8000 -e DATABASE_URL=postgresql+psycopg://user:pass@host/db snake-arena
 ```
+
+### Running with Postgres via Docker Compose
+
+`docker-compose.yml` runs the app alongside a Postgres container, wired
+together and with data persisted in a named volume by default:
+
+```bash
+docker compose up --build
+```
+
+Then open http://localhost:8000. `docker compose down` stops both
+containers and keeps the data volume; add `-v` to also delete it. The
+Postgres credentials/db name in `docker-compose.yml` are dev-only
+defaults — change them (and `DATABASE_URL` alongside them) for anything
+beyond local use.
 
 ### Known limitation
 
