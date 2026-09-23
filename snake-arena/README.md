@@ -43,14 +43,24 @@ a hard refresh.
 ## Deploying to Render
 
 `render.yaml` (repo root) is a [Render Blueprint](https://render.com/docs/blueprint-spec)
-that provisions this same Docker image as two environments, each a web
-service plus its own managed Postgres database, wired together via
-`DATABASE_URL`:
+that provisions this same Docker image as two web services, wired to a
+single managed Postgres database via `DATABASE_URL`:
 
-- **production** (`snake-arena` / `snake-arena-db`) — deploys from `main`.
-- **staging** (`snake-arena-staging` / `snake-arena-db-staging`) —
-  deploys from a `staging` branch, so a change can be verified against a
-  real deploy before it's promoted to `main`.
+- **production** (`snake-arena`) — deploys from `main`.
+- **staging** (`snake-arena-staging`) — deploys from a `staging` branch,
+  so a change can be verified against a real deploy before it's promoted
+  to `main`.
+
+Both services share `snake-arena-db` — Render's free tier allows only
+one active database per account, so a fully isolated staging database
+would require putting one of the two on a paid plan. **This means
+staging is not data-isolated from production**: anything staging writes
+(including its own users, scores, and the CI pipeline's `ci-smoke-*`
+test account/score, see below) shows up in the real, live leaderboard
+production users see. If that's not acceptable, switch `databases[0].plan`
+to a paid plan and add a second `databases` entry (with its own
+`fromDatabase` reference on the staging service) for a properly isolated
+setup.
 
 Setup:
 
@@ -59,8 +69,8 @@ Setup:
 2. In the Render dashboard: **New > Blueprint**, pick this repo, and
    Render will pick up `render.yaml` from the repo root automatically.
 3. Click **Apply**. Render builds `snake-arena/Dockerfile` for both
-   services, creates both Postgres instances, and sets each service's
-   `DATABASE_URL` to its own database's connection string.
+   services, creates the Postgres instance, and sets `DATABASE_URL` on
+   both services to its connection string.
 4. In the CI/CD pipeline (see below), set the `RENDER_URL_STAGING` and
    `RENDER_URL_PRODUCTION` repo variables to each service's base URL
    (e.g. `https://snake-arena-staging.onrender.com`), so it can verify
@@ -94,7 +104,8 @@ environment's live deploy to report healthy and then runs the same smoke
 suite against it (via the `RENDER_URL_STAGING`/`RENDER_URL_PRODUCTION`
 repo variables), so a broken deploy shows up as a failed CI run rather
 than going unnoticed. Note this writes a uniquely-named `ci-smoke-*`
-user and score into that environment's real leaderboard each run.
+user and score into the (shared, per above) leaderboard on every run of
+either job.
 
 ### Rolling back a bad deploy
 
