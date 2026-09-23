@@ -5,6 +5,7 @@ services:
     rootDir: snake-arena
     dockerfilePath: ./Dockerfile
     dockerContext: .
+    branch: main
     plan: free
     healthCheckPath: /health
     envVars:
@@ -13,8 +14,31 @@ services:
           name: snake-arena-db
           property: connectionString
 
+  # Staging: same image, deployed from the `staging` branch against its own
+  # database, so changes can be verified against a real deploy before being
+  # promoted to `main` (production, above).
+  - type: web
+    name: snake-arena-staging
+    runtime: docker
+    rootDir: snake-arena
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    branch: staging
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: snake-arena-db-staging
+          property: connectionString
+
 databases:
   - name: snake-arena-db
     plan: free
     databaseName: snake_arena
+    user: snake
+
+  - name: snake-arena-db-staging
+    plan: free
+    databaseName: snake_arena_staging
     user: snake
