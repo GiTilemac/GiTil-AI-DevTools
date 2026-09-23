@@ -1,0 +1,118 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: snake-arena/backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync
+      - run: uv run pytest
+
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: snake-arena/frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: snake-arena/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:run
+
+  # Builds and boots the same docker-compose.yml used for local/prod
+  # (app + real Postgres), then runs integration-tests/ against it over
+  # real HTTP - unlike backend/tests (in-process, in-memory SQLite) or
+  # frontend/tests (component-level Vitest).
+  integration-e2e:
+    name: Integration & e2e tests (Docker Compose)
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    defaults:
+      run:
+        working-directory: snake-arena
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Build and start the stack
+        run: docker compose up --build -d
+
+      - name: Wait for the app to become healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "App is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "App did not become healthy in time" >&2
+          docker compose logs
+          exit 1
+
+      - name: Run integration/e2e smoke tests against the running stack
+        working-directory: snake-arena/backend
+        run: uv sync && uv run pytest ../integration-tests -v
+
+      - name: Compose logs (on failure)
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down the stack
+        if: always()
+        run: docker compose down -v
+
+  # Render's Blueprint auto-deploys on every push to main independently
+  # of this workflow (there's no GitHub OIDC support in Render - deploys
+  # only accept a static API key/deploy-hook secret, so we're not driving
+  # the deploy from CI). This job just confirms the result: it polls the
+  # deployed app's public /health endpoint until it responds, so a broken
+  # deploy surfaces as a failed CI run instead of going unnoticed.
+  health-check-deploy:
+    name: Verify Render deploy is healthy
+    runs-on: ubuntu-latest
+    needs: integration-e2e
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Poll the deployed health endpoint
+        env:
+          HEALTH_URL: ${{ vars.RENDER_HEALTH_URL }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then
+            echo "Set the RENDER_HEALTH_URL repo variable (Settings > Secrets and variables > Actions > Variables tab) to https://<your-service>.onrender.com/health" >&2
+            exit 1
+          fi
+          for i in $(seq 1 60); do
+            if curl -sf "$HEALTH_URL" > /dev/null; then
+              echo "Deploy is healthy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Deployed app did not report healthy within the timeout" >&2
+          exit 1
