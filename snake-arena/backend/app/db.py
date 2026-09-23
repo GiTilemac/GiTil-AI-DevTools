@@ -27,7 +27,17 @@ class Base(DeclarativeBase):
 
 
 def database_url_from_env() -> str:
-    return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+    """Reads DATABASE_URL, normalizing the scheme so hosts that hand out a
+    plain `postgres://`/`postgresql://` connection string (e.g. Render,
+    Heroku) still resolve to the psycopg driver actually installed here,
+    instead of SQLAlchemy's default (psycopg2, which isn't a dependency).
+    """
+    url = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+    if url.startswith("postgres://"):
+        url = "postgresql+psycopg://" + url[len("postgres://") :]
+    elif url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://") :]
+    return url
 
 
 def make_engine(database_url: str) -> Engine:

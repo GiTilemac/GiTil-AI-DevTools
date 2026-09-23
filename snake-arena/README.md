@@ -39,3 +39,24 @@ works fine, but a hard refresh or direct link to `/leaderboard` hits the
 API and returns JSON instead of the page. Every other route
 (`/`, `/play`, `/login`, `/signup`, `/watch`) serves the app correctly on
 a hard refresh.
+
+## Deploying to Render
+
+`render.yaml` (repo root) is a [Render Blueprint](https://render.com/docs/blueprint-spec)
+that provisions this same Docker image as a web service plus a managed
+Postgres database, wired together via `DATABASE_URL`:
+
+1. Push this repo to GitHub (already done if you're reading this from
+   the remote).
+2. In the Render dashboard: **New > Blueprint**, pick this repo, and
+   Render will pick up `render.yaml` from the repo root automatically.
+3. Click **Apply**. Render builds `snake-arena/Dockerfile`, creates the
+   `snake-arena-db` Postgres instance, and sets `DATABASE_URL` on the web
+   service to that database's connection string.
+
+The free Postgres plan in `render.yaml` is dev-only (Render expires free
+databases after a limited period) — switch `databases[0].plan` to a paid
+plan for anything long-lived. No other setup is required: tables are
+created automatically on first boot, and the backend serves both the API
+and the built frontend from the one service, same as the Docker Compose
+setup above.
