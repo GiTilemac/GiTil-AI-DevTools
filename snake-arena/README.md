@@ -71,7 +71,7 @@ Setup:
 3. Click **Apply**. Render builds `snake-arena/Dockerfile` for both
    services, creates the Postgres instance, and sets `DATABASE_URL` on
    both services to its connection string.
-4. In the CI/CD pipeline (see below), set the `RENDER_URL_STAGING` and
+4. For the Deploy workflow (see below), set the `RENDER_URL_STAGING` and
    `RENDER_URL_PRODUCTION` repo variables to each service's base URL
    (e.g. `https://snake-arena-staging.onrender.com`), so it can verify
    deploys automatically.
@@ -89,7 +89,7 @@ frontend from the one service, same as the Docker Compose setup above.
 
 ### CI/CD
 
-`.github/workflows/ci-cd.yml` runs backend and frontend tests in
+`.github/workflows/ci.yml` (**CI**) runs backend and frontend tests in
 parallel, then builds and boots the real `docker-compose.yml` stack
 (app + Postgres) and runs `integration-tests/` against it over HTTP —
 signup, submit score, leaderboard, SPA fallback — exercising the real
@@ -99,10 +99,11 @@ touch.
 Render's Blueprint auto-deploys on every push to `main`/`staging`
 independently of this workflow — Render has no GitHub OIDC support, only
 a static API key/deploy-hook secret, so deploys aren't driven from CI.
-Instead, after a push to either branch, the pipeline waits for that
+Instead, once CI passes for a push to either branch,
+`.github/workflows/deploy.yml` (**Deploy**) waits for that
 environment's live deploy to report healthy and then runs the same smoke
 suite against it (via the `RENDER_URL_STAGING`/`RENDER_URL_PRODUCTION`
-repo variables), so a broken deploy shows up as a failed CI run rather
+repo variables), so a broken deploy shows up as a failed Deploy run rather
 than going unnoticed. Note this writes a uniquely-named `ci-smoke-*`
 user and score into the (shared, per above) leaderboard on every run of
 either job.
