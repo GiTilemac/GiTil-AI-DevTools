@@ -55,6 +55,25 @@ describe('backendClient.auth', () => {
   });
 });
 
+describe('backendClient.games', () => {
+  it('starts a session, keeps it alive and ends it', async () => {
+    const session = await backendClient.games.start('walls');
+    expect(session.mode).toBe('walls');
+    await expect(backendClient.games.heartbeat(session.id)).resolves.toBeUndefined();
+    await expect(backendClient.games.end(session.id)).resolves.toBeUndefined();
+  });
+
+  it('rejects an unknown mode with INVALID_MODE', async () => {
+    await expect(backendClient.games.start('sideways' as never)).rejects.toMatchObject({ code: 'INVALID_MODE' });
+  });
+
+  it('rejects heartbeats for an ended session', async () => {
+    const session = await backendClient.games.start('pass-through');
+    await backendClient.games.end(session.id);
+    await expect(backendClient.games.heartbeat(session.id)).rejects.toThrow();
+  });
+});
+
 describe('backendClient.leaderboard', () => {
   it('returns seeded entries pre-sorted descending', async () => {
     const entries = await backendClient.leaderboard.getLeaderboard();

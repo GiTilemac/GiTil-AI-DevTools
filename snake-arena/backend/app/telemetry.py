@@ -55,15 +55,27 @@ DEFAULT_ENVIRONMENT = "local"
 _EXPORTED_LOGGERS = ("", "uvicorn", "uvicorn.access")
 
 
-def build_resource() -> Resource:
-    attributes: dict[str, str] = {
-        "service.name": os.environ.get("OTEL_SERVICE_NAME") or DEFAULT_SERVICE_NAME,
+def deployment_attributes() -> dict[str, str]:
+    """Environment and deployed version, as OpenTelemetry attributes.
+    Part of the resource (so on every signal), and also set directly on
+    the app's own metric data points (app/games.py), so they're plain
+    labels in every metrics backend, not only those that promote
+    resource attributes."""
+    attributes = {
         "deployment.environment.name": os.environ.get("DEPLOYMENT_ENVIRONMENT") or DEFAULT_ENVIRONMENT,
     }
-    attributes["deployment.environment"] = attributes["deployment.environment.name"]
     version = os.environ.get("APP_VERSION")
     if version:
         attributes["service.version"] = version
+    return attributes
+
+
+def build_resource() -> Resource:
+    attributes = {
+        "service.name": os.environ.get("OTEL_SERVICE_NAME") or DEFAULT_SERVICE_NAME,
+        **deployment_attributes(),
+    }
+    attributes["deployment.environment"] = attributes["deployment.environment.name"]
     # Resource.create also merges in OTEL_RESOURCE_ATTRIBUTES; the
     # attributes above take precedence over it.
     return Resource.create(attributes)

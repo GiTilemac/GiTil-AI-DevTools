@@ -64,3 +64,12 @@ def test_signup_submit_score_and_leaderboard(client: httpx.Client) -> None:
     assert leaderboard.status_code == 200
     entries = leaderboard.json()
     assert any(e["username"] == username and e["score"] == 42 for e in entries)
+
+
+def test_game_session_lifecycle(client: httpx.Client) -> None:
+    # Adds one game to the target's `snake_arena.games.created` metric.
+    response = client.post("/games", json={"mode": "walls"})
+    assert response.status_code == 201, response.text
+    game_id = response.json()["id"]
+    assert client.post(f"/games/{game_id}/heartbeat").status_code == 204
+    assert client.post(f"/games/{game_id}/end").status_code == 204

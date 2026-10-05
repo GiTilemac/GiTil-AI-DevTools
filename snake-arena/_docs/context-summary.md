@@ -72,6 +72,16 @@ describe the frontend as mock-backed — safe to trust again.
 
 ## Recent history (newest first)
 
+- *(branch `game-metrics`, 2026-10-06)* — Game metrics. Games still run
+  in the browser; new `POST /games`, `/games/{id}/heartbeat`,
+  `/games/{id}/end` (open to guests, in `openapi.yaml`) track sessions
+  in memory (`app/games.py`, 2-minute heartbeat timeout, 10k cap).
+  Metrics: `snake_arena.games.created`, `.creation_failures`
+  (`error.type`), `.active` (gauge), each with `game.mode`,
+  `deployment.environment.name` and `service.version` as data-point
+  attributes (`telemetry.deployment_attributes()`). Frontend:
+  `useGameSession` hook in PlayPage, best effort. Smoke tests cover the
+  lifecycle.
 - *(branch `observability-stack`, 2026-10-06)* — `observability/`: a
   separate Compose project (`snake-arena-observability`) with an
   OpenTelemetry Collector (contrib 0.162), Tempo 3.1, Prometheus 3.15

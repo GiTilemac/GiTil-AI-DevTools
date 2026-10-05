@@ -15,6 +15,7 @@ servers:
 tags:
   - name: auth
   - name: leaderboard
+  - name: games
   - name: watch
 
 security: []
@@ -173,6 +174,88 @@ paths:
         '401':
           description: No active session; score was not recorded.
 
+  /games:
+    post:
+      tags: [games]
+      operationId: startGame
+      summary: Start a game session
+      description: >
+        Mirrors `backendClient.games.start`. Games run in the browser; this
+        only records that one has begun, for the game metrics (games
+        created, active games, creation failures). Open to guests; a
+        signed-in player's session is linked to them. The frontend calls
+        it when a game starts and never lets a failure here stop play.
+      security:
+        - {}
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartGameInput'
+      responses:
+        '201':
+          description: The new session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameSession'
+        '422':
+          description: Missing or unknown `mode` (`INVALID_MODE`).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    $ref: '#/components/schemas/BackendError'
+        '503':
+          description: Too many games in progress (`TOO_MANY_GAMES`).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    $ref: '#/components/schemas/BackendError'
+
+  /games/{gameId}/heartbeat:
+    post:
+      tags: [games]
+      operationId: gameHeartbeat
+      summary: Keep a game session alive
+      description: >
+        Mirrors `backendClient.games.heartbeat`. Sent periodically while
+        the game runs; a session with no heartbeat for 2 minutes is
+        considered abandoned and stops counting as active.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '204':
+          description: Session refreshed.
+        '404':
+          description: Unknown, ended or expired session.
+
+  /games/{gameId}/end:
+    post:
+      tags: [games]
+      operationId: endGame
+      summary: End a game session
+      description: >
+        Mirrors `backendClient.games.end`, called on game over (or when the
+        player leaves mid-game). Score submission stays separate
+        (`POST /leaderboard`).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '204':
+          description: Session ended.
+        '404':
+          description: Unknown, ended or expired session.
+
   /watch/live:
     get:
       tags: [watch]
@@ -201,6 +284,14 @@ paths:
                 $ref: '#/components/schemas/GameState'
 
 components:
+  parameters:
+    GameId:
+      name: gameId
+      in: path
+      required: true
+      schema:
+        type: string
+
   securitySchemes:
     bearerAuth:
       type: http
@@ -282,6 +373,25 @@ components:
         mode:
           $ref: '#/components/schemas/GameMode'
 
+    StartGameInput:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          $ref: '#/components/schemas/GameMode'
+
+    GameSession:
+      type: object
+      required: [id, mode, startedAt]
+      properties:
+        id:
+          type: string
+        mode:
+          $ref: '#/components/schemas/GameMode'
+        startedAt:
+          type: string
+          format: date-time
+
     Point:
       type: object
       required: [x, y]
@@ -352,6 +462,6 @@ components:
       properties:
         code:
           type: string
-          enum: [USERNAME_TAKEN, INVALID_CREDENTIALS]
+          enum: [USERNAME_TAKEN, INVALID_CREDENTIALS, INVALID_MODE, TOO_MANY_GAMES]
         message:
           type: string

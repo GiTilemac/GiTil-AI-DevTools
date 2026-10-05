@@ -7,7 +7,7 @@
  * reset between tests via `resetMockBackend()`.
  *
  * Mirrors the contract in `openapi.yaml`: seeded leaderboard, bearer
- * tokens, and a shared bot game driving `/watch/live` (reusing the real
+ * tokens, game sessions, and a shared bot game driving `/watch/live` (reusing the real
  * game engine/bot/rng from `src/game`, same as the real backend does).
  */
 
@@ -43,6 +43,7 @@ function seedLeaderboard(): LeaderboardEntry[] {
 let users: MockUser[] = [];
 let leaderboard: LeaderboardEntry[] = seedLeaderboard();
 let tokens = new Map<string, string>(); // token -> user id
+let gameSessions = new Set<string>();
 
 // -- watch/bot state: one shared game + interval, mirroring the real
 // backend's `store.tick_watch` (advance at most once per tick, fan out to
@@ -184,6 +185,26 @@ async function handleFetch(url: string, init: RequestInit = {}): Promise<Respons
     return jsonResponse([...leaderboard]);
   }
 
+  if (method === 'POST' && pathname === '/games') {
+    const mode = body?.mode;
+    if (mode !== 'pass-through' && mode !== 'walls') {
+      return errorResponse('INVALID_MODE', 'mode must be one of: pass-through, walls.', 422);
+    }
+    const id = nextId('game');
+    gameSessions.add(id);
+    return jsonResponse({ id, mode, startedAt: new Date().toISOString() }, 201);
+  }
+
+  const gameAction = /^\/games\/([^/]+)\/(heartbeat|end)$/.exec(pathname);
+  if (method === 'POST' && gameAction) {
+    const [, id, action] = gameAction;
+    if (!gameSessions.has(id)) {
+      return jsonResponse({ detail: 'Unknown or expired game' }, 404);
+    }
+    if (action === 'end') gameSessions.delete(id);
+    return new Response(null, { status: 204 });
+  }
+
   throw new Error(`mockServer: unhandled request ${method} ${pathname}`);
 }
 
@@ -198,6 +219,7 @@ export function resetMockBackend(): void {
   users = [];
   leaderboard = seedLeaderboard();
   tokens = new Map();
+  gameSessions = new Set();
 
   if (watchInterval) {
     clearInterval(watchInterval);

@@ -58,6 +58,10 @@ Without either, the app exports nothing, as before.
   request/response sizes, active requests, DB connection pool. Labels:
   `job` (service name), `deployment_environment_name`, `service_version`
   (promoted in `prometheus/prometheus.yml`).
+- **Game metrics** in Prometheus: `snake_arena_games_created_total`,
+  `snake_arena_games_creation_failures_total` (by `error_type`) and
+  `snake_arena_games_active`, by `game_mode`, environment and version.
+  See *Game metrics* in `../_docs/deployment.md`.
 - **Logs** in Loki: the app's and uvicorn's logs, e.g. access logs.
   Explore → Loki → `{service_name="snake-arena"}`.
 

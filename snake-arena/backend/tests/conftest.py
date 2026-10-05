@@ -15,6 +15,7 @@ os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 import pytest
 from fastapi.testclient import TestClient
 
+from app.games import sessions
 from app.main import app
 from app.store import Store, store
 
@@ -24,6 +25,7 @@ def fresh_store() -> Store:
     """Every test starts from a freshly-seeded store, so tests can't leak
     state (users, tokens, leaderboard entries) into each other."""
     store.reset()
+    sessions.reset()
     return store
 
 

@@ -60,6 +60,36 @@ are never altered either. See *Database changes* in
 - **Logs**: Python logging from the app and uvicorn (including access
   logs). Records logged during a request carry its trace and span IDs.
 
+### Game metrics
+
+Games run in the browser, so the Play page reports each game's
+lifecycle to the backend (`useGameSession`): `POST /games` when it
+starts, `POST /games/{id}/heartbeat` every 30 s while it runs, and
+`POST /games/{id}/end` when it stops. Failures there never affect play.
+Sessions are held in memory (`backend/app/games.py`); one without a
+heartbeat for 2 minutes counts as abandoned.
+
+| Metric (OpenTelemetry → Prometheus name) | Type | Attributes |
+|---|---|---|
+| `snake_arena.games.created` → `snake_arena_games_created_total` | counter | `game.mode` |
+| `snake_arena.games.creation_failures` → `snake_arena_games_creation_failures_total` | counter | `error.type` (`invalid_mode`, `too_many_games`, or an exception class), `game.mode` when known |
+| `snake_arena.games.active` → `snake_arena_games_active` | gauge | `game.mode` |
+
+All three also carry `deployment.environment.name` and `service.version`
+as data-point attributes, so they're ordinary labels everywhere,
+including Grafana Cloud, without joining on `target_info`. For example:
+
+```promql
+sum by (deployment_environment_name) (snake_arena_games_active)
+sum by (service_version) (rate(snake_arena_games_created_total[5m]))
+sum by (error_type) (increase(snake_arena_games_creation_failures_total[1h]))
+```
+
+Each smoke-test run (Deploy workflow) starts and ends one game, so it
+shows up in `games.created`.
+
+### Resource attributes
+
 Every span and metric carries these resource attributes:
 
 | Attribute                     | Source                     | Example                     |
