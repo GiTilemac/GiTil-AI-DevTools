@@ -72,13 +72,12 @@ describe the frontend as mock-backed — safe to trust again.
 
 ## Recent history (newest first)
 
-- *(branch `add-production-environment`, 2026-10-05)* — Split Render
-  into two independent environments, **dev** and **production**, and
-  removed staging. `render.yaml` (`snake-arena` on `main`,
-  `snake-arena-db`) is dev. `render.production.yaml` defines production:
-  `snake-arena-prod` on the `production` branch with its own
-  `snake-arena-prod-db` (needs a paid plan or separate Render account
-  because of the one-free-database limit). `/health` now returns the
+- *(branch `add-production-environment`, 2026-10-05)* — Render now
+  has two environments, **dev** and **production**; staging removed.
+  `render.yaml` defines dev (`snake-arena` on `main`) and production
+  (`snake-arena-prod` on the `production` branch), both on the one
+  shared `snake-arena-db` (free tier allows one database; separate prod
+  DB was rejected to avoid a paid plan, so they're not data-isolated). `/health` now returns the
   deployed commit from `RENDER_GIT_COMMIT`. CI runs on `main` only;
   Deploy verifies dev (`RENDER_URL_DEV`); the manual
   `promote.yml` fast-forwards `production` to the commit dev is

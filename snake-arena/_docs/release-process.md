@@ -5,13 +5,14 @@ CI setup, see [deployment.md](deployment.md).
 
 ## Environments
 
-| Environment | Branch       | Infrastructure           | Deployed by                       | Verified by                     |
-|-------------|--------------|--------------------------|-----------------------------------|---------------------------------|
-| Dev         | `main`       | `render.yaml`            | Render auto-deploy on push        | `verify-dev-deploy` (`deploy.yml`) |
-| Production  | `production` | `render.production.yaml` | **Promote to production** workflow | the same workflow (`promote.yml`) |
+| Environment | Branch       | Service            | Deployed by                        | Verified by                        |
+|-------------|--------------|--------------------|------------------------------------|------------------------------------|
+| Dev         | `main`       | `snake-arena`      | Render auto-deploy on push         | `verify-dev-deploy` (`deploy.yml`) |
+| Production  | `production` | `snake-arena-prod` | **Promote to production** workflow | the same workflow (`promote.yml`)  |
 
-Each environment has its own database. Nothing done in dev reaches
-production data.
+Both services use the **same Postgres database** (a Render free-tier
+limit). Anything done in dev, such as signups, scores or test data,
+also shows up in production.
 
 Render deploys every push to `main` on its own, and CI does not block
 it. So merging to `main` **is** a release to dev, even if CI fails.
@@ -65,16 +66,18 @@ tables that are missing but **does not alter existing ones**. A new or
 changed column on an existing table won't be applied on deploy. So:
 
 - Adding a new table is safe.
-- Changing an existing table needs a manual migration, run against each
-  database: dev's before merging, production's before approving the
-  promotion. Write the steps in the PR. The Promote summary flags
-  changes to `db_models.py` as a reminder.
+- Changing an existing table needs a manual migration. Dev and
+  production share the database, so a migration run for dev also
+  changes it under production, which is still running the older code
+  until you promote. Keep migrations backward compatible (add, don't
+  rename or drop), and write the steps in the PR. The Promote summary
+  flags changes to `db_models.py` as a reminder.
 
 ## Checklist
 
 - [ ] PR into `main` is green and merged
 - [ ] *Verify dev deploy* passed and manual check on dev done
-- [ ] Any schema change migrated on the production database
+- [ ] Any schema change is backward compatible with production's code
 - [ ] *Promote to production* run and approved
 - [ ] Production verification in that run passed
 - [ ] Manual check on production done

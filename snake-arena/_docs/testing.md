@@ -79,9 +79,9 @@ BASE_URL=https://<service>.onrender.com uv run pytest ../integration-tests -v
 ```
 
 Each run creates a user named `ci-smoke-<random>` with a score. On
-Render that data lands in the target environment's database (dev and
-production each have their own, see [deployment.md](deployment.md)), so
-it shows up on that environment's leaderboard.
+Render that data lands in the database dev and production share (see
+[deployment.md](deployment.md)), so it shows up on the production
+leaderboard.
 
 ## In CI
 

@@ -1,10 +1,10 @@
-# Dev environment: deploys every push to `main`. Production is an
-# independent copy of this infrastructure in render.production.yaml (own
-# service, own database), updated only by the Promote workflow
-# (.github/workflows/promote.yml). Service names are kept as they were
-# so Render keeps updating the existing services instead of creating
-# new ones.
+# Dev and production. Both run the same image and share one Postgres
+# database (Render's free tier allows only one active database), so
+# anything done in dev - signups, scores, CI `ci-smoke-*` entries - shows
+# up in production. See snake-arena/_docs/deployment.md.
 services:
+  # Dev: auto-deploys every push to `main`. Name kept from before so
+  # Render keeps updating the existing service.
   - type: web
     name: snake-arena
     runtime: docker
@@ -12,6 +12,25 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     branch: main
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: snake-arena-db
+          property: connectionString
+
+  # Production: deploys from the `production` branch, which only the
+  # Promote workflow (.github/workflows/promote.yml) moves, by
+  # fast-forwarding it to the commit dev is running. Don't push to it
+  # by hand.
+  - type: web
+    name: snake-arena-prod
+    runtime: docker
+    rootDir: snake-arena
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    branch: production
     plan: free
     healthCheckPath: /health
     envVars:

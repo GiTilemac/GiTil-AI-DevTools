@@ -42,29 +42,29 @@ a hard refresh.
 
 ## Deploying to Render
 
-The app runs on Render as two independent copies of the same
-infrastructure, each defined by a [Render Blueprint](https://render.com/docs/blueprint-spec)
-at the repo root, and each with its own service and Postgres database:
+`render.yaml` (repo root) is a [Render Blueprint](https://render.com/docs/blueprint-spec)
+that runs this Docker image as two web services sharing one managed
+Postgres database (`snake-arena-db`):
 
-- **dev** (`render.yaml`): `snake-arena` auto-deploys every push to
-  `main`, using `snake-arena-db`.
-- **production** (`render.production.yaml`): `snake-arena-prod` deploys
-  from the `production` branch, using `snake-arena-prod-db`. Nothing done
-  in dev reaches production data.
+- **dev** (`snake-arena`) auto-deploys every push to `main`.
+- **production** (`snake-arena-prod`) deploys from the `production`
+  branch.
 
 Changes merge to `main` and land in dev. The manually-run **Promote to
 production** workflow then ships the commit dev is running: it
 fast-forwards `production` to it after an approval. See
 `_docs/release-process.md`.
 
-Render's free tier allows only one active database, so production's
-database needs a paid plan (or a separate Render account). Setup steps,
-including the GitHub variables (`RENDER_URL_DEV`, `RENDER_URL_PROD`)
-and the `production` environment, are in `_docs/deployment.md`.
+**Dev and production are not data-isolated.** Render's free tier
+allows only one active database, so anything dev writes (including CI's
+`ci-smoke-*` test users and scores) shows up on the production
+leaderboard. Setup steps, including the GitHub variables
+(`RENDER_URL_DEV`, `RENDER_URL_PROD`) and the `production` environment,
+are in `_docs/deployment.md`.
 
-The free plans in both Blueprints are dev-only (Render expires free
+The free plans in `render.yaml` are dev-only (Render expires free
 databases after a limited period, and free web services spin down when
-idle). Switch production's `plan` fields to paid plans for anything
+idle). Switch the `plan` fields to paid plans for anything
 long-lived. Tables are created automatically on first boot, and the
 backend serves both the API and the built frontend from the one
 service, same as the Docker Compose setup above.
@@ -87,8 +87,8 @@ until dev's `/health` reports that commit (Render sets
 a broken deploy shows up as a failed Deploy run rather than going
 unnoticed. `.github/workflows/promote.yml` (**Promote to production**)
 does the same check against production after promoting. Each smoke run
-writes a uniquely-named `ci-smoke-*` user and score into that
-environment's leaderboard.
+writes a uniquely-named `ci-smoke-*` user and score into the shared
+leaderboard.
 
 ### Rolling back a bad deploy
 

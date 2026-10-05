@@ -1,7 +1,7 @@
 name: Promote to production
 
 # Manually promotes the version running in dev to production. Render
-# deploys production (render.production.yaml) from the `production`
+# deploys production (`snake-arena-prod` in render.yaml) from the `production`
 # branch, so promoting means fast-forwarding that branch to the commit
 # dev's /health reports, then waiting for production to run it and
 # smoke-testing it.
