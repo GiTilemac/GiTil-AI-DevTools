@@ -29,6 +29,7 @@ count in a low-traffic app that restarts on every deploy.
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import threading
@@ -42,6 +43,8 @@ from opentelemetry.metrics import CallbackOptions, Meter, Observation
 
 from app.models import GameMode
 from app.telemetry import deployment_attributes
+
+log = logging.getLogger(__name__)
 
 # GAME_SESSION_TIMEOUT_SECONDS overrides it, e.g. to exercise expiry
 # locally without waiting two minutes.
@@ -107,7 +110,15 @@ class GameSessions:
     def start(self, mode: GameMode, user_id: str | None) -> Session:
         now = self._clock()
         with self._lock:
-            self._expire(now)
+            # Sweep abandoned games here rather than via _expire(), so we
+            # can log how many players are leaving games mid-way.
+            expired = 0
+            for sid, s in self._sessions.items():
+                if now - s.last_seen > self._timeout:
+                    del self._sessions[sid]
+                    expired += 1
+            if expired:
+                log.info("expired %d abandoned game(s)", expired)
             if len(self._sessions) >= self._max_active:
                 raise TooManyGamesError
             session = Session(
