@@ -28,3 +28,9 @@ export interface SubmitScoreInput {
   score: number;
   mode: GameMode;
 }
+
+export interface GameSession {
+  id: string;
+  mode: GameMode;
+  startedAt: string;
+}

@@ -72,6 +72,36 @@ describe the frontend as mock-backed — safe to trust again.
 
 ## Recent history (newest first)
 
+- *(branch `game-metrics`, 2026-10-06)* — Games dashboard
+  (`observability/grafana/provisioning/dashboards/snake-arena-games.json`,
+  environment/version filters; game counters are observable from 0 so
+  increase() doesn't miss the first games). Alert **GameCreationFailing**
+  (`observability/prometheus/rules/`, promtool-tested; >=20% and >=3
+  failed starts in 10m, for 5m, per env+version; labels service,
+  environment, version, owner; dashboard + runbook URLs). Runbook in
+  `_docs/runbooks/`. `observability/grafana-cloud/apply-alert-rules.sh`
+  uploads rules to Grafana Cloud (chosen as the deployed observability
+  stack; no self-hosted deployment). `on-call-engineer/poll_alerts.py`
+  polls `/api/v1/alerts` each minute and runs a read-only headless
+  `claude -p` per new firing alert, writing `incidents/*/report.md`.
+- *(branch `game-metrics`, 2026-10-06)* — Game metrics. Games still run
+  in the browser; new `POST /games`, `/games/{id}/heartbeat`,
+  `/games/{id}/end` (open to guests, in `openapi.yaml`) track sessions
+  in memory (`app/games.py`, 2-minute heartbeat timeout, 10k cap).
+  Metrics: `snake_arena.games.created`, `.creation_failures`
+  (`error.type`), `.active` (gauge), each with `game.mode`,
+  `deployment.environment.name` and `service.version` as data-point
+  attributes (`telemetry.deployment_attributes()`). Frontend:
+  `useGameSession` hook in PlayPage, best effort. Smoke tests cover the
+  lifecycle.
+- *(branch `observability-stack`, 2026-10-06)* — `observability/`: a
+  separate Compose project (`snake-arena-observability`) with an
+  OpenTelemetry Collector (contrib 0.162), Tempo 3.1, Prometheus 3.15
+  (native OTLP receiver), Loki 3.7 (native OTLP) and Grafana 13.2
+  (provisioned data sources with trace↔log links). The app joins via
+  the `compose.app.yml` overlay (shared external network). The app now
+  also exports logs over OTLP (`opentelemetry-instrumentation-logging`
+  handler on root + uvicorn loggers). Verified end to end locally.
 - *(branch `opentelemetry`, 2026-10-05)* — OpenTelemetry in the
   backend (`app/telemetry.py`, wired in `app/main.py`): FastAPI and
   SQLAlchemy traces + metrics, `/health` excluded, exported over

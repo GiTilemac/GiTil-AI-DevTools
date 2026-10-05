@@ -5,12 +5,14 @@ import { ModeSelector } from '../components/ModeSelector/ModeSelector';
 import { ScoreBar } from '../components/ScoreBar/ScoreBar';
 import { useAuth } from '../context/AuthContext';
 import { useGameLoop } from '../hooks/useGameLoop';
+import { useGameSession } from '../hooks/useGameSession';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 
 export function PlayPage() {
   const { user } = useAuth();
   const { submitScore } = useLeaderboard();
   const { state, setMode, restart } = useGameLoop('pass-through');
+  useGameSession(state.status, state.mode);
   const [submitted, setSubmitted] = useState(false);
   const submittedForTick = useRef<number | null>(null);
 

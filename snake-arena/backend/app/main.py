@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.routers import auth, leaderboard, watch
+from app.routers import auth, games, leaderboard, watch
 from app.store import store
 from app.telemetry import setup_telemetry
 
@@ -25,6 +25,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(leaderboard.router)
+app.include_router(games.router)
 app.include_router(watch.router)
 
 # OTEL_SDK_DISABLED is OpenTelemetry's standard off switch; the test

@@ -57,6 +57,43 @@ are never altered either. See *Database changes* in
   because Render and the workflows poll it constantly.
 - **Metrics** from the same instrumentations (request durations,
   connection pool usage).
+- **Logs**: Python logging from the app and uvicorn (including access
+  logs). Records logged during a request carry its trace and span IDs.
+
+### Game metrics
+
+Games run in the browser, so the Play page reports each game's
+lifecycle to the backend (`useGameSession`): `POST /games` when it
+starts, `POST /games/{id}/heartbeat` every 30 s while it runs, and
+`POST /games/{id}/end` when it stops. Failures there never affect play.
+Sessions are held in memory (`backend/app/games.py`); one without a
+heartbeat for 2 minutes counts as abandoned.
+
+| Metric (OpenTelemetry → Prometheus name) | Type | Attributes |
+|---|---|---|
+| `snake_arena.games.created` → `snake_arena_games_created_total` | counter | `game.mode` |
+| `snake_arena.games.creation_failures` → `snake_arena_games_creation_failures_total` | counter | `error.type` (`invalid_mode`, `too_many_games`, or an exception class), `game.mode` when known |
+| `snake_arena.games.active` → `snake_arena_games_active` | gauge | `game.mode` |
+
+All three also carry `deployment.environment.name` and `service.version`
+as data-point attributes, so they're ordinary labels everywhere,
+including Grafana Cloud, without joining on `target_info`. For example:
+
+```promql
+sum by (deployment_environment_name) (snake_arena_games_active)
+sum by (service_version) (rate(snake_arena_games_created_total[5m]))
+sum by (error_type) (increase(snake_arena_games_creation_failures_total[1h]))
+```
+
+Each smoke-test run (Deploy workflow) starts and ends one game, so it
+shows up in `games.created`.
+
+A Grafana dashboard for these, filterable by environment and version,
+is in `observability/grafana/provisioning/dashboards/snake-arena-games.json`
+(preloaded in the local stack; importable into Grafana Cloud). See
+[observability/README.md](../observability/README.md).
+
+### Resource attributes
 
 Every span and metric carries these resource attributes:
 
@@ -95,7 +132,34 @@ In Grafana, **Explore → Tempo** shows traces; filter with
 `resource.deployment.environment="production"` (or `"dev"`) and group
 by `resource.service.version` to compare releases.
 
-To see spans locally:
+### Alerts and on-call
+
+The deployed environments' observability stack is Grafana Cloud. Two
+one-time steps there:
+
+1. **Dashboard:** Dashboards → New → Import →
+   `observability/grafana/provisioning/dashboards/snake-arena-games.json`,
+   then pick the stack's Prometheus as *Data source*.
+2. **Alert rules:** run `observability/grafana-cloud/apply-alert-rules.sh`
+   with the stack's Prometheus URL, instance ID, a `rules:write` token
+   and the Grafana URL. Re-run it whenever the rules change.
+
+Rules: `observability/prometheus/rules/snake-arena-alerts.yml`
+(**GameCreationFailing**; runbook in
+[runbooks/game-creation-failing.md](runbooks/game-creation-failing.md)).
+`on-call-engineer/poll_alerts.py` polls the alerts API every minute and
+hands each new firing alert to a read-only headless Claude Code, which
+writes an incident report. See
+[on-call-engineer/README.md](../on-call-engineer/README.md).
+
+### Local: self-hosted stack
+
+`observability/` is a separate Docker Compose project with an
+OpenTelemetry Collector, Prometheus, Loki, Tempo and Grafana. Run the
+app against it with the `observability/compose.app.yml` overlay. See
+[observability/README.md](../observability/README.md).
+
+To just print spans locally:
 
 ```bash
 OTEL_TRACES_EXPORTER=console uv run uvicorn app.main:app --reload

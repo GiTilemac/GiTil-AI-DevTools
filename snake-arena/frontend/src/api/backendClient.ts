@@ -1,7 +1,7 @@
-import type { GameState } from '../game/types';
-import type { LeaderboardEntry, LoginInput, SignupInput, SubmitScoreInput, User } from './types';
+import type { GameMode, GameState } from '../game/types';
+import type { GameSession, LeaderboardEntry, LoginInput, SignupInput, SubmitScoreInput, User } from './types';
 
-export type BackendErrorCode = 'USERNAME_TAKEN' | 'INVALID_CREDENTIALS';
+export type BackendErrorCode = 'USERNAME_TAKEN' | 'INVALID_CREDENTIALS' | 'INVALID_MODE' | 'TOO_MANY_GAMES';
 
 export class BackendError extends Error {
   code: BackendErrorCode;
@@ -108,6 +108,25 @@ export const backendClient = {
         { method: 'POST', body: JSON.stringify(input) },
         true,
       );
+    },
+  },
+
+  games: {
+    /**
+     * Game sessions exist only for the backend's game metrics (games
+     * created, active games, creation failures): the game itself runs
+     * here in the browser. Callers should treat failures as non-fatal.
+     */
+    async start(mode: GameMode): Promise<GameSession> {
+      return request<GameSession>('/games', { method: 'POST', body: JSON.stringify({ mode }) }, true);
+    },
+
+    async heartbeat(id: string): Promise<void> {
+      return request<void>(`/games/${encodeURIComponent(id)}/heartbeat`, { method: 'POST' });
+    },
+
+    async end(id: string): Promise<void> {
+      return request<void>(`/games/${encodeURIComponent(id)}/end`, { method: 'POST' });
     },
   },
 

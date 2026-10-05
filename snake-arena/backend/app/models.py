@@ -84,9 +84,26 @@ class SubmitScoreInput(BaseModel):
     mode: GameMode
 
 
+class StartGameInput(BaseModel):
+    # A plain string rather than GameMode, so an invalid mode reaches the
+    # endpoint and is counted as a failed game creation (app/games.py)
+    # instead of being rejected by request validation first.
+    mode: str | None = None
+
+
+class GameSession(BaseModel):
+    id: str
+    mode: GameMode
+    started_at: datetime = Field(alias="startedAt")
+
+    model_config = {"populate_by_name": True}
+
+
 class BackendErrorCode(str, Enum):
     USERNAME_TAKEN = "USERNAME_TAKEN"
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    INVALID_MODE = "INVALID_MODE"
+    TOO_MANY_GAMES = "TOO_MANY_GAMES"
 
 
 class BackendError(BaseModel):

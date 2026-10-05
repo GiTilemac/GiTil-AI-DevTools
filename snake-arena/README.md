@@ -31,6 +31,19 @@ Postgres credentials/db name in `docker-compose.yml` are dev-only
 defaults — change them (and `DATABASE_URL` alongside them) for anything
 beyond local use.
 
+### Observability (optional)
+
+`observability/` is a separate Compose project with an OpenTelemetry
+Collector, Prometheus, Loki, Tempo and Grafana. Start it, then run the
+app with its overlay to see traces, metrics and logs in Grafana:
+
+```bash
+(cd observability && docker compose up -d)
+docker compose -f docker-compose.yml -f observability/compose.app.yml up --build
+```
+
+See [observability/README.md](observability/README.md).
+
 ### Known limitation
 
 The frontend's `/leaderboard` page and the backend's `GET /leaderboard`
