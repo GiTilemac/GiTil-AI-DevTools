@@ -35,9 +35,9 @@ only the Promote workflow moves it.
    smoke-tests dev. Its summary lists the commits that will ship, and
    warns if `db_models.py` changed.
 4. **Approve** (only if the `production` environment has required
-   reviewers). A reviewer approves the waiting job. It fast-forwards `production` to that commit, waits
-   for Render to deploy it, and runs `integration-tests/` against
-   production.
+   reviewers). A reviewer approves the waiting job. It then
+   fast-forwards `production` to that commit, waits for Render to
+   deploy it, and runs `integration-tests/` against production.
 5. **Check production by hand.** Do a quick manual check of the
    production URL.
 
