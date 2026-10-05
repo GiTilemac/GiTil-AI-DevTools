@@ -3,15 +3,16 @@
 # own Postgres database, so nothing done in dev - test signups, scores,
 # CI `ci-smoke-*` entries, schema experiments - reaches production data.
 #
-# Apply it as a separate Blueprint (New > Blueprint, Blueprint path
-# `render.production.yaml`), in its own Render workspace: the free tier
-# allows only one active database per workspace, and dev already uses
-# it. To run both stacks in one workspace instead, put one of the two
-# databases on a paid plan. See snake-arena/_docs/deployment.md.
+# Render's free tier allows only one active Postgres database, and dev
+# already uses it (Render rejected a second one with "cannot have more
+# than one active tier database"). So either put one of the two
+# databases on a paid plan - recommended for production anyway, since
+# free databases expire - or apply this Blueprint under a separate
+# Render account. See snake-arena/_docs/deployment.md.
 #
-# Deploys from the `production` branch, which is only ever
-# fast-forwarded to a commit already verified in dev (see
-# snake-arena/_docs/release-process.md).
+# Deploys from the `production` branch, which only the Promote workflow
+# (.github/workflows/promote.yml) moves: it fast-forwards it to the
+# commit dev is running. Don't push to it by hand.
 services:
   - type: web
     name: snake-arena-prod

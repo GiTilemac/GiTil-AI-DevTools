@@ -73,16 +73,19 @@ describe the frontend as mock-backed — safe to trust again.
 ## Recent history (newest first)
 
 - *(branch `add-production-environment`, 2026-10-05)* — Split Render
-  into two independent environments. `render.yaml` (services
-  `snake-arena` on `main`, `snake-arena-staging` on `staging`, shared
-  `snake-arena-db`) is now **dev**. New `render.production.yaml`
-  defines **production**: `snake-arena-prod` on a new `production`
-  branch with its own `snake-arena-prod-db`, applied as a separate
-  Blueprint in its own Render workspace. CI and Deploy workflows cover
-  `production`; Deploy reads `RENDER_URL_STAGING`, `RENDER_URL_DEV`,
-  `RENDER_URL_PROD`. Release flow: `staging` → `main` → `production`.
-  See `deployment.md` and `release-process.md`. Earlier Render/CI
-  commits (`3752888`..`57e0be2`) are not summarized here; see git log.
+  into two independent environments, **dev** and **production**, and
+  removed staging. `render.yaml` (`snake-arena` on `main`,
+  `snake-arena-db`) is dev. `render.production.yaml` defines production:
+  `snake-arena-prod` on the `production` branch with its own
+  `snake-arena-prod-db` (needs a paid plan or separate Render account
+  because of the one-free-database limit). `/health` now returns the
+  deployed commit from `RENDER_GIT_COMMIT`. CI runs on `main` only;
+  Deploy verifies dev (`RENDER_URL_DEV`); the manual
+  `promote.yml` fast-forwards `production` to the commit dev is
+  running, behind the `production` GitHub environment's approval, and
+  verifies production (`RENDER_URL_PROD`). See `deployment.md` and
+  `release-process.md`. Earlier Render/CI commits
+  (`3752888`..`57e0be2`) are not summarized here; see git log.
 0. *(uncommitted)* — Added Postgres support (`psycopg[binary]` dependency
    only, no code changes needed) and `docker-compose.yml` (app +
    Postgres, wired via `DATABASE_URL`). Both verified live against a real

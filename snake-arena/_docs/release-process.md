@@ -5,64 +5,58 @@ CI setup, see [deployment.md](deployment.md).
 
 ## Environments
 
-| Environment | Branch       | Infrastructure                         | Verified by                                |
-|-------------|--------------|----------------------------------------|--------------------------------------------|
-| Dev staging | `staging`    | `render.yaml` (dev database)           | `verify-staging-deploy` (`deploy.yml`)     |
-| Dev         | `main`       | `render.yaml` (dev database)           | `verify-dev-deploy` (`deploy.yml`)         |
-| Production  | `production` | `render.production.yaml` (own database) | `verify-production-deploy` (`deploy.yml`) |
+| Environment | Branch       | Infrastructure           | Deployed by                       | Verified by                     |
+|-------------|--------------|--------------------------|-----------------------------------|---------------------------------|
+| Dev         | `main`       | `render.yaml`            | Render auto-deploy on push        | `verify-dev-deploy` (`deploy.yml`) |
+| Production  | `production` | `render.production.yaml` | **Promote to production** workflow | the same workflow (`promote.yml`) |
 
-Dev staging and dev share one Postgres database. Production is a
-separate copy of the infrastructure with its own database, so nothing
-done in dev reaches production data.
+Each environment has its own database. Nothing done in dev reaches
+production data.
 
-Render deploys every push to these branches on its own. CI does not
-start or block the deploy. So a push to `staging`, `main` or
-`production` **is** a release to that environment, even if CI fails.
-Never push to them directly; only merge or fast-forward changes that
-are already green.
+Render deploys every push to `main` on its own, and CI does not block
+it. So merging to `main` **is** a release to dev, even if CI fails.
+Only merge PRs that are green. Never push to `production` by hand;
+only the Promote workflow moves it.
 
 ## Release steps
 
-1. **Open a PR into `staging`.** CI runs the backend tests, frontend
+1. **Open a PR into `main`.** CI runs the backend tests, frontend
    tests (typecheck + Vitest), and the Docker Compose integration suite.
    Merge only when all checks are green.
-2. **Verify dev staging.** In the Actions tab, confirm the **Verify
-   staging deploy** job passes, then try the change on the staging URL:
+2. **Verify dev.** In the Actions tab, confirm the **Verify dev deploy**
+   job passes. It waits for dev to run the merged commit and then runs
+   `integration-tests/` against it. Then try the change on the dev URL:
    sign up or log in, play a game, submit a score, check the
    leaderboard.
-3. **Promote to dev.** Fast-forward `main` to `staging`:
+3. **Run Promote to production.** In the Actions tab, open **Promote to
+   production** and click **Run workflow**. Its first job finds the
+   commit dev is running, checks it's on `main` and passed CI, and
+   smoke-tests dev. Its summary lists the commits that will ship, and
+   warns if `db_models.py` changed.
+4. **Approve.** A reviewer for the `production` environment approves
+   the waiting job. It fast-forwards `production` to that commit, waits
+   for Render to deploy it, and runs `integration-tests/` against
+   production.
+5. **Check production by hand.** Do a quick manual check of the
+   production URL.
 
-   ```bash
-   git checkout main
-   git pull
-   git merge --ff-only origin/staging
-   git push origin main
-   ```
-
-   Confirm the **Verify dev deploy** job passes.
-4. **Promote to production.** Fast-forward `production` to `main`, so
-   production gets exactly the commit verified in dev:
-
-   ```bash
-   git checkout production
-   git pull
-   git merge --ff-only origin/main
-   git push origin production
-   ```
-
-5. **Verify production.** Confirm the **Verify production deploy** job
-   passes, then do a quick manual check of the production URL.
+Promote ships what dev is **running**, not whatever is newest on
+`main`. If a merge is still deploying to dev, wait for it or you'll
+promote the commit before it.
 
 ## If something goes wrong
 
 - **CI fails on a PR:** fix it on the branch. Nothing has been deployed.
-- **Verify staging or dev deploy fails:** don't promote. Fix it on a
-  branch and send it through `staging` again.
-- **Verify production deploy fails, or users report breakage:** roll
-  back first and debug afterwards. Render dashboard (production
-  workspace) → `snake-arena-prod` → **Deploys** → last good deploy →
-  **Rollback**. Rolling back turns off auto-deploy. Turn it back on
-  only after the fix has gone through dev.
+- **Verify dev deploy fails:** don't promote. Fix it on a branch and
+  merge the fix.
+- **Promote fails before approval:** nothing was deployed. The log says
+  which check failed (dev unhealthy, CI not green, or `production`
+  can't be fast-forwarded).
+- **Promote fails after the push, or users report breakage:** roll back
+  first and debug afterwards. Render dashboard → `snake-arena-prod` →
+  **Deploys** → last good deploy → **Rollback**. Rolling back turns off
+  auto-deploy. Ship the fix through dev, turn auto-deploy back on, then
+  promote again (see *Rolling back* in [deployment.md](deployment.md)).
 
 ## Database changes
 
@@ -71,18 +65,16 @@ tables that are missing but **does not alter existing ones**. A new or
 changed column on an existing table won't be applied on deploy. So:
 
 - Adding a new table is safe.
-- Changing an existing table needs a manual migration. Dev and
-  production have separate databases, so run it against each one: dev
-  first, then production when the change is promoted. Write the steps
-  in the PR.
+- Changing an existing table needs a manual migration, run against each
+  database: dev's before merging, production's before approving the
+  promotion. Write the steps in the PR. The Promote summary flags
+  changes to `db_models.py` as a reminder.
 
 ## Checklist
 
-- [ ] PR into `staging` is green and merged
-- [ ] *Verify staging deploy* passed and manual check on staging done
-- [ ] `main` fast-forwarded to `staging`; *Verify dev deploy* passed
-- [ ] Any schema change reviewed, and migrated on the production
-      database if needed (see above)
-- [ ] `production` fast-forwarded to `main` and pushed
-- [ ] *Verify production deploy* passed
+- [ ] PR into `main` is green and merged
+- [ ] *Verify dev deploy* passed and manual check on dev done
+- [ ] Any schema change migrated on the production database
+- [ ] *Promote to production* run and approved
+- [ ] Production verification in that run passed
 - [ ] Manual check on production done

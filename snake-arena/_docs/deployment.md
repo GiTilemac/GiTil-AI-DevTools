@@ -57,88 +57,99 @@ credentials (`snake`/`snake`) are for development only.
 There are two independent copies of the infrastructure, each its own
 Render Blueprint at the repo root:
 
-| Environment | Blueprint                | Service               | Branch       | Database              |
-|-------------|--------------------------|-----------------------|--------------|-----------------------|
-| Dev         | `render.yaml`            | `snake-arena`         | `main`       | `snake-arena-db`      |
-| Dev         | `render.yaml`            | `snake-arena-staging` | `staging`    | `snake-arena-db`      |
-| Production  | `render.production.yaml` | `snake-arena-prod`    | `production` | `snake-arena-prod-db` |
+| Environment | Blueprint                | Service            | Branch       | Database              |
+|-------------|--------------------------|--------------------|--------------|-----------------------|
+| Dev         | `render.yaml`            | `snake-arena`      | `main`       | `snake-arena-db`      |
+| Production  | `render.production.yaml` | `snake-arena-prod` | `production` | `snake-arena-prod-db` |
 
-Every service builds `snake-arena/Dockerfile`, runs on the free plan,
-uses `/health` as its health check, and gets `DATABASE_URL` from its
-own environment's database. Dev and production share nothing: separate
-services, separate databases, separate data.
+Both services build `snake-arena/Dockerfile`, use `/health` as their
+health check, and get `DATABASE_URL` from their own database. Dev and
+production share nothing: separate services, separate databases,
+separate data.
 
-The dev service names are unchanged from when `render.yaml` was the
-only Blueprint, because Render identifies Blueprint services by name.
-Renaming them would create new services and leave the old ones behind.
+`/health` also returns the deployed commit (`{"status": "ok",
+"commit": "<sha>"}`), taken from the `RENDER_GIT_COMMIT` variable Render
+sets on each deploy. The workflows use it to tell when a new deploy is
+live. Outside Render, `commit` is `null`.
+
+The dev service keeps its original name because Render identifies
+Blueprint services by name. Renaming it would create a new service and
+leave the old one behind.
 
 ### First-time setup
 
-Dev (`render.yaml`) is already applied. For production:
+Dev (`render.yaml`) is already applied. It used to also define a
+`snake-arena-staging` service. Removing a service from a Blueprint
+doesn't delete it, so delete it in the Render dashboard, and delete the
+`staging` branch once nothing on it is missing from `main`.
 
-1. Create the `production` branch from the commit currently deployed
-   from `main` and push it:
+For production:
 
-   ```bash
-   git fetch origin
-   git push origin origin/main:refs/heads/production
-   ```
-
-2. In Render, switch to (or create) a **separate workspace** for
-   production. The free tier allows only one active Postgres database
-   per workspace, and dev's database already uses it. To keep both in
-   one workspace, put one of the two databases on a paid plan instead.
-3. Go to **New → Blueprint**, pick the repo, set **Blueprint path** to
-   `render.production.yaml`, and click **Apply**. Render creates
-   `snake-arena-prod-db` and `snake-arena-prod`. Tables are created on
-   first boot.
-4. In GitHub, go to **Settings → Secrets and variables → Actions →
+1. **Free-tier database limit.** Render allows only one active free
+   Postgres database, and dev uses it. Applying a Blueprint with a
+   second one fails with "cannot have more than one active tier
+   database". Either set `plan` on `snake-arena-prod-db` in
+   `render.production.yaml` to a paid plan (recommended, since free
+   databases also expire), or apply the Blueprint under a separate
+   Render account.
+2. In Render, go to **New → Blueprint**, pick the repo, set **Blueprint
+   path** to `render.production.yaml`, and click **Apply**. The service
+   stays empty until the `production` branch exists.
+3. In GitHub, go to **Settings → Secrets and variables → Actions →
    Variables** and set:
 
-   | Variable             | Value                                  |
-   |----------------------|----------------------------------------|
-   | `RENDER_URL_STAGING` | dev staging service URL (unchanged)    |
-   | `RENDER_URL_DEV`     | `snake-arena` service URL              |
-   | `RENDER_URL_PROD`    | `snake-arena-prod` service URL         |
+   | Variable          | Value                          |
+   |-------------------|--------------------------------|
+   | `RENDER_URL_DEV`  | `snake-arena` service URL      |
+   | `RENDER_URL_PROD` | `snake-arena-prod` service URL |
 
-   Delete the old `RENDER_URL_PRODUCTION` variable; it pointed at the
-   service that is now dev, and nothing reads it any more. The Deploy
-   workflow's verify jobs fail until their variable is set.
+   Delete `RENDER_URL_STAGING` and `RENDER_URL_PRODUCTION`; nothing
+   reads them any more.
+4. Go to **Settings → Environments**, create an environment named
+   `production`, and add required reviewers so that every promotion
+   needs an approval.
+5. If `production` has branch protection, make sure the Promote
+   workflow can still push to it, or it will fail at the push.
+6. Run the **Promote to production** workflow (see below). The first
+   run creates the `production` branch and Render deploys it.
 
 Production starts with an empty database. Dev data (users, scores) is
 not copied over.
 
 ### How deploys happen
 
-- Render **auto-deploys every push** to `staging`, `main` (dev) and
-  `production`. The CI workflow doesn't start or gate the deploy,
-  because Render only supports a static API key or deploy hook, not
-  GitHub OIDC.
-- Once the **CI** workflow (`.github/workflows/ci.yml`) passes for that
-  push, the **Deploy** workflow (`.github/workflows/deploy.yml`) starts.
-  Its `verify-staging-deploy`, `verify-dev-deploy` or
-  `verify-production-deploy` job waits up to about 10 minutes for
-  `/health` and then runs `integration-tests/` against the live URL.
-  That way a broken deploy shows up as a failed run.
+- **Dev:** Render **auto-deploys every push** to `main`. The CI
+  workflow doesn't start or gate the deploy, because Render only
+  supports a static API key or deploy hook, not GitHub OIDC. Once
+  **CI** (`.github/workflows/ci.yml`) passes for the push, **Deploy**
+  (`.github/workflows/deploy.yml`) waits up to 15 minutes for dev's
+  `/health` to report that commit, then runs `integration-tests/`
+  against it. A broken deploy shows up as a failed run.
+- **Production:** only the manually-run **Promote to production**
+  workflow (`.github/workflows/promote.yml`) deploys it. It finds the
+  commit dev is running, checks that the commit is on `main` and passed
+  CI, smoke-tests dev, and waits for approval. Then it fast-forwards
+  `production` to that commit. Render deploys it, and the workflow
+  waits for production's `/health` to report the commit and runs
+  `integration-tests/` against production.
+- Production is verified inside Promote, not Deploy, because pushes
+  made with `GITHUB_TOKEN` don't trigger other workflows.
+- `GITHUB_TOKEN` also can't push a ref update that changes files under
+  `.github/workflows/`. If a promotion includes such a change, its push
+  is rejected. Add a `PROMOTE_TOKEN` repository secret (a fine-grained
+  token with Contents and Workflows write on this repo) and Promote
+  uses it instead.
 - Deploy is triggered by `workflow_run`, and GitHub only uses the copy
-  of `deploy.yml` on `main`. A change to that file only takes effect
-  once it's on `main`, even for staging and production runs.
-- Setting `autoDeployTrigger: checksPass` on the services would make
-  Render wait for green GitHub checks before deploying. It isn't
-  enabled yet.
+  of `deploy.yml` on `main`.
 
 ### Caveats
 
-- **Dev staging and dev `main` share a database.** Anything done on
-  the staging service shows up on the dev leaderboard. Production is
-  not affected.
-- **Smoke-test data in production.** Each `verify-production-deploy`
-  run writes a `ci-smoke-*` user and score into the production
-  database, so they appear on the production leaderboard.
+- **Smoke-test data.** Every Deploy run, and every Promote run (once
+  against dev, once against production), writes a `ci-smoke-*` user
+  and score into that environment's leaderboard.
 - **Free plans.** Web services spin down when idle, so the first request
   after a while is slow. Free databases expire after a limited period.
-  Switch the `plan` fields in `render.production.yaml` to paid plans
-  before relying on production for anything long-lived.
+  Use paid plans in `render.production.yaml` for anything long-lived.
 - **`/leaderboard` on a hard refresh** returns the API's JSON instead of
   the page, because the frontend route and the API endpoint share a
   path. See the README's *Known limitation* section.
@@ -149,3 +160,9 @@ In the Render dashboard, open the service → **Deploys** → the last good
 deploy → **Rollback**. This reuses the old build, so there's no rebuild.
 Rolling back **turns off auto-deploy** for that service. Turn it back on
 once the fix has gone through dev.
+
+After rolling back production, the `production` branch still points at
+the bad commit. That's fine: the next promotion fast-forwards past it,
+so a fix only has to land on `main` and pass dev. Turn auto-deploy back
+on for `snake-arena-prod` **before** running Promote, or Render won't
+deploy the push and Promote times out waiting for it.

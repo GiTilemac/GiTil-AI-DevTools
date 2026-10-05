@@ -1,0 +1,180 @@
+name: Promote to production
+
+# Manually promotes the version running in dev to production. Render
+# deploys production (render.production.yaml) from the `production`
+# branch, so promoting means fast-forwarding that branch to the commit
+# dev's /health reports, then waiting for production to run it and
+# smoke-testing it.
+#
+# Production verification happens here rather than in the Deploy
+# workflow because pushes made with GITHUB_TOKEN don't trigger other
+# workflows, so CI/Deploy never run for this push.
+#
+# The `promote` job runs in the `production` GitHub environment. Add
+# required reviewers to it (Settings > Environments) to make every
+# promotion need an approval; the `prepare` job's summary shows what is
+# about to ship.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: promote-production
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    name: Check the dev version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.dev.outputs.sha }}
+      up_to_date: ${{ steps.ff.outputs.up_to_date }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Find the commit dev is running
+        id: dev
+        env:
+          BASE_URL: ${{ vars.RENDER_URL_DEV }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "Set the RENDER_URL_DEV repo variable to https://<your-dev-service>.onrender.com" >&2
+            exit 1
+          fi
+          sha=$(curl -sf "$BASE_URL/health" | jq -r '.commit // empty') || {
+            echo "Dev at $BASE_URL is not healthy" >&2
+            exit 1
+          }
+          if [ -z "$sha" ]; then
+            echo "Dev's /health doesn't report a commit (RENDER_GIT_COMMIT unset?)" >&2
+            exit 1
+          fi
+          echo "Dev is running $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check the commit is on main and passed CI
+        env:
+          SHA: ${{ steps.dev.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "$SHA is not on main" >&2
+            exit 1
+          fi
+          passed=$(gh run list --workflow ci.yml --commit "$SHA" --event push \
+            --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')
+          if [ "$passed" -eq 0 ]; then
+            echo "CI has not passed for $SHA" >&2
+            exit 1
+          fi
+      - name: Check production can be fast-forwarded
+        id: ff
+        env:
+          SHA: ${{ steps.dev.outputs.sha }}
+        run: |
+          if ! git rev-parse --verify -q origin/production > /dev/null; then
+            echo "No production branch yet; it will be created at $SHA"
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+          elif [ "$(git rev-parse origin/production)" = "$SHA" ]; then
+            echo "Production is already at $SHA"
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          elif git merge-base --is-ancestor origin/production "$SHA"; then
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "production has commits that $SHA doesn't contain, so it can't be fast-forwarded. Get them onto main and through dev first." >&2
+            exit 1
+          fi
+      - name: Summarize what will ship
+        if: steps.ff.outputs.up_to_date == 'false'
+        env:
+          SHA: ${{ steps.dev.outputs.sha }}
+        run: |
+          base=$(git rev-parse -q --verify origin/production || true)
+          range=${base:+$base..}$SHA
+          {
+            echo "## Promoting \`${SHA:0:7}\` to production"
+            echo
+            echo "### Commits"
+            echo '```'
+            git log --oneline -n 50 "$range"
+            echo '```'
+            if [ -n "$base" ] && ! git diff --quiet "$base" "$SHA" -- snake-arena/backend/app/db_models.py; then
+              echo
+              echo "### :warning: Database models changed"
+              echo "\`create_all()\` doesn't alter existing tables. If a column changed, migrate the production database before approving. See \`snake-arena/_docs/release-process.md\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: astral-sh/setup-uv@v10.1.0
+        if: steps.ff.outputs.up_to_date == 'false'
+        with:
+          enable-cache: true
+      - name: Smoke-test dev before promoting
+        if: steps.ff.outputs.up_to_date == 'false'
+        working-directory: snake-arena/backend
+        env:
+          BASE_URL: ${{ vars.RENDER_URL_DEV }}
+        run: |
+          uv sync
+          uv run pytest ../integration-tests -v
+
+  promote:
+    name: Promote and verify production
+    needs: prepare
+    if: needs.prepare.outputs.up_to_date == 'false'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          # GITHUB_TOKEN can't push a ref update that changes files under
+          # .github/workflows/. If a promotion includes such a change, set
+          # a PROMOTE_TOKEN secret (fine-grained token with Contents and
+          # Workflows write on this repo) and it is used instead.
+          token: ${{ secrets.PROMOTE_TOKEN || github.token }}
+      - name: Fast-forward production
+        env:
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          # A plain (non-force) push, so it's rejected if production
+          # moved since the prepare job and is no longer an ancestor.
+          git push origin "$SHA:refs/heads/production"
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync
+        working-directory: snake-arena/backend
+      - name: Wait for the commit to be live on production
+        env:
+          BASE_URL: ${{ vars.RENDER_URL_PROD }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "Set the RENDER_URL_PROD variable to https://<your-production-service>.onrender.com" >&2
+            exit 1
+          fi
+          for i in $(seq 1 90); do
+            commit=$(curl -sf "$BASE_URL/health" | jq -r '.commit // empty' || true)
+            if [ "$commit" = "$SHA" ]; then
+              echo "Production is healthy and running $SHA"
+              exit 0
+            fi
+            echo "Production reports commit '${commit:-<none>}', waiting for $SHA"
+            sleep 10
+          done
+          echo "Production did not report healthy on $SHA within 15 minutes. Check the deploy in Render; roll back there if needed." >&2
+          exit 1
+      - name: Run smoke tests against the live production deploy
+        working-directory: snake-arena/backend
+        env:
+          BASE_URL: ${{ vars.RENDER_URL_PROD }}
+        run: uv run pytest ../integration-tests -v
