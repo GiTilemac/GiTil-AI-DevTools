@@ -72,6 +72,19 @@ describe the frontend as mock-backed — safe to trust again.
 
 ## Recent history (newest first)
 
+- *(branch `add-production-environment`, 2026-10-05)* — Render now
+  has two environments, **dev** and **production**; staging removed.
+  `render.yaml` defines dev (`snake-arena` on `main`) and production
+  (`snake-arena-prod` on the `production` branch), both on the one
+  shared `snake-arena-db` (free tier allows one database; separate prod
+  DB was rejected to avoid a paid plan, so they're not data-isolated). `/health` now returns the
+  deployed commit from `RENDER_GIT_COMMIT`. CI runs on `main` only;
+  Deploy verifies dev (`RENDER_URL_DEV`); the manual
+  `promote.yml` fast-forwards `production` to the commit dev is
+  running, behind the `production` GitHub environment's approval, and
+  verifies production (`RENDER_URL_PROD`). See `deployment.md` and
+  `release-process.md`. Earlier Render/CI commits
+  (`3752888`..`57e0be2`) are not summarized here; see git log.
 0. *(uncommitted)* — Added Postgres support (`psycopg[binary]` dependency
    only, no code changes needed) and `docker-compose.yml` (app +
    Postgres, wired via `DATABASE_URL`). Both verified live against a real

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -26,8 +27,12 @@ app.include_router(watch.router)
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, str | None]:
+    # Render sets RENDER_GIT_COMMIT to the deployed commit's SHA. The
+    # promote workflow polls this to know when a new deploy is live,
+    # since the previous deploy keeps answering /health until then.
+    # None anywhere else (local, Docker Compose, tests).
+    return {"status": "ok", "commit": os.environ.get("RENDER_GIT_COMMIT")}
 
 
 # Serves the built frontend (see ../Dockerfile, which builds frontend/ and

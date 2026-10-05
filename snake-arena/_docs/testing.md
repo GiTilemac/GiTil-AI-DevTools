@@ -1,7 +1,7 @@
 # Testing Snake Arena
 
 Snake Arena has three test suites. Each one covers a different layer, and
-CI runs all three on every push and PR to `main`/`staging`.
+CI runs all three on every push and PR to `main`.
 
 | Suite            | Location              | Runs against                                  | Tool                  |
 |------------------|-----------------------|-----------------------------------------------|-----------------------|
@@ -79,14 +79,15 @@ BASE_URL=https://<service>.onrender.com uv run pytest ../integration-tests -v
 ```
 
 Each run creates a user named `ci-smoke-<random>` with a score. On
-Render that data lands in the shared staging/production database (see
-[deployment.md](deployment.md)), so it shows up on the live leaderboard.
+Render that data lands in the database dev and production share (see
+[deployment.md](deployment.md)), so it shows up on the production
+leaderboard.
 
 ## In CI
 
-There are two workflows in `.github/workflows/`.
+There are three workflows in `.github/workflows/`.
 
-`ci.yml` (**CI**) runs on every push and PR to `main`/`staging`:
+`ci.yml` (**CI**) runs on every push and PR to `main`:
 
 1. `backend-tests` and `frontend-tests` run in parallel.
 2. `integration-e2e` runs only if both pass. It boots `docker-compose.yml`,
@@ -94,9 +95,13 @@ There are two workflows in `.github/workflows/`.
    if anything fails, and always tears the stack down.
 
 `deploy.yml` (**Deploy**) starts when a CI run finishes. If CI passed
-for a push to `staging` or `main`, it runs `verify-staging-deploy` or
-`verify-production-deploy`, which runs the same smoke suite against the
-live Render deploy.
+for a push to `main`, it runs `verify-dev-deploy`. That job waits for
+dev's `/health` to report the pushed commit, then runs the same smoke
+suite against the live dev deploy.
+
+`promote.yml` (**Promote to production**) is run by hand. It runs the
+smoke suite against dev before promoting, and against production once
+the promoted commit is live there.
 
 If a CI job fails, the jobs after it are skipped and Deploy doesn't
 verify anything. This does

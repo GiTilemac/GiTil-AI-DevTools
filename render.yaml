@@ -1,4 +1,10 @@
+# Dev and production. Both run the same image and share one Postgres
+# database (Render's free tier allows only one active database), so
+# anything done in dev - signups, scores, CI `ci-smoke-*` entries - shows
+# up in production. See snake-arena/_docs/deployment.md.
 services:
+  # Dev: auto-deploys every push to `main`. Name kept from before so
+  # Render keeps updating the existing service.
   - type: web
     name: snake-arena
     runtime: docker
@@ -14,18 +20,17 @@ services:
           name: snake-arena-db
           property: connectionString
 
-  # Staging: same image, deployed from the `staging` branch, so changes
-  # can be verified against a real deploy before being promoted to
-  # `main` (production, above). Shares production's database (Render's
-  # free tier allows only one active database per account) - see the
-  # README's Render section for what that trade-off means in practice.
+  # Production: deploys from the `production` branch, which only the
+  # Promote workflow (.github/workflows/promote.yml) moves, by
+  # fast-forwarding it to the commit dev is running. Don't push to it
+  # by hand.
   - type: web
-    name: snake-arena-staging
+    name: snake-arena-prod
     runtime: docker
     rootDir: snake-arena
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    branch: staging
+    branch: production
     plan: free
     healthCheckPath: /health
     envVars:

@@ -43,49 +43,31 @@ a hard refresh.
 ## Deploying to Render
 
 `render.yaml` (repo root) is a [Render Blueprint](https://render.com/docs/blueprint-spec)
-that provisions this same Docker image as two web services, wired to a
-single managed Postgres database via `DATABASE_URL`:
+that runs this Docker image as two web services sharing one managed
+Postgres database (`snake-arena-db`):
 
-- **production** (`snake-arena`) — deploys from `main`.
-- **staging** (`snake-arena-staging`) — deploys from a `staging` branch,
-  so a change can be verified against a real deploy before it's promoted
-  to `main`.
+- **dev** (`snake-arena`) auto-deploys every push to `main`.
+- **production** (`snake-arena-prod`) deploys from the `production`
+  branch.
 
-Both services share `snake-arena-db` — Render's free tier allows only
-one active database per account, so a fully isolated staging database
-would require putting one of the two on a paid plan. **This means
-staging is not data-isolated from production**: anything staging writes
-(including its own users, scores, and the CI pipeline's `ci-smoke-*`
-test account/score, see below) shows up in the real, live leaderboard
-production users see. If that's not acceptable, switch `databases[0].plan`
-to a paid plan and add a second `databases` entry (with its own
-`fromDatabase` reference on the staging service) for a properly isolated
-setup.
+Changes merge to `main` and land in dev. The manually-run **Promote to
+production** workflow then ships the commit dev is running: it
+fast-forwards `production` to it after an approval. See
+`_docs/release-process.md`.
 
-Setup:
-
-1. Push this repo to GitHub, including a `staging` branch (already done
-   if you're reading this from the remote).
-2. In the Render dashboard: **New > Blueprint**, pick this repo, and
-   Render will pick up `render.yaml` from the repo root automatically.
-3. Click **Apply**. Render builds `snake-arena/Dockerfile` for both
-   services, creates the Postgres instance, and sets `DATABASE_URL` on
-   both services to its connection string.
-4. For the Deploy workflow (see below), set the `RENDER_URL_STAGING` and
-   `RENDER_URL_PRODUCTION` repo variables to each service's base URL
-   (e.g. `https://snake-arena-staging.onrender.com`), so it can verify
-   deploys automatically.
-
-Promoting a change to production is a normal merge: land it on
-`staging` first, confirm it on the staging URL, then merge/fast-forward
-`staging` into `main`.
+**Dev and production are not data-isolated.** Render's free tier
+allows only one active database, so anything dev writes (including CI's
+`ci-smoke-*` test users and scores) shows up on the production
+leaderboard. Setup steps, including the GitHub variables
+(`RENDER_URL_DEV`, `RENDER_URL_PROD`) and the `production` environment,
+are in `_docs/deployment.md`.
 
 The free plans in `render.yaml` are dev-only (Render expires free
 databases after a limited period, and free web services spin down when
-idle) — switch the relevant `plan` fields to a paid plan for anything
-long-lived. No other setup is required: tables are created automatically
-on first boot, and the backend serves both the API and the built
-frontend from the one service, same as the Docker Compose setup above.
+idle). Switch the `plan` fields to paid plans for anything
+long-lived. Tables are created automatically on first boot, and the
+backend serves both the API and the built frontend from the one
+service, same as the Docker Compose setup above.
 
 ### CI/CD
 
@@ -96,17 +78,17 @@ signup, submit score, leaderboard, SPA fallback — exercising the real
 database and static-file serving that the in-process unit tests don't
 touch.
 
-Render's Blueprint auto-deploys on every push to `main`/`staging`
-independently of this workflow — Render has no GitHub OIDC support, only
-a static API key/deploy-hook secret, so deploys aren't driven from CI.
-Instead, once CI passes for a push to either branch,
-`.github/workflows/deploy.yml` (**Deploy**) waits for that
-environment's live deploy to report healthy and then runs the same smoke
-suite against it (via the `RENDER_URL_STAGING`/`RENDER_URL_PRODUCTION`
-repo variables), so a broken deploy shows up as a failed Deploy run rather
-than going unnoticed. Note this writes a uniquely-named `ci-smoke-*`
-user and score into the (shared, per above) leaderboard on every run of
-either job.
+Render auto-deploys every push to `main` to dev independently of this
+workflow — Render has no GitHub OIDC support, only a static API
+key/deploy-hook secret, so deploys aren't driven from CI. Instead, once
+CI passes for a push, `.github/workflows/deploy.yml` (**Deploy**) waits
+until dev's `/health` reports that commit (Render sets
+`RENDER_GIT_COMMIT`) and then runs the same smoke suite against it, so
+a broken deploy shows up as a failed Deploy run rather than going
+unnoticed. `.github/workflows/promote.yml` (**Promote to production**)
+does the same check against production after promoting. Each smoke run
+writes a uniquely-named `ci-smoke-*` user and score into the shared
+leaderboard.
 
 ### Rolling back a bad deploy
 
