@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 
 import pytest
@@ -7,6 +8,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from opentelemetry.instrumentation.logging.handler import LoggingHandler
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy import text
@@ -48,8 +51,11 @@ def test_empty_version_is_omitted(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "service.version" not in build_resource().attributes
 
 
+Instrumented = tuple[TestClient, InMemorySpanExporter, InMemoryLogRecordExporter]
+
+
 @pytest.fixture
-def instrumented(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, InMemorySpanExporter]]:
+def instrumented(monkeypatch: pytest.MonkeyPatch) -> Iterator[Instrumented]:
     monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "dev")
     monkeypatch.setenv("APP_VERSION", "20261005-120000-abc1234")
 
@@ -62,22 +68,32 @@ def instrumented(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, 
 
     @app.get("/count")
     def count() -> dict[str, int]:
+        logging.getLogger("app.test").warning("counting")
         with store.engine.connect() as conn:
             return {"n": conn.execute(text("SELECT 1")).scalar_one()}
 
     exporter = InMemorySpanExporter()
-    setup_telemetry(app, store.engine, span_processor=SimpleSpanProcessor(exporter), set_global=False)
+    log_exporter = InMemoryLogRecordExporter()
+    setup_telemetry(
+        app,
+        store.engine,
+        span_processor=SimpleSpanProcessor(exporter),
+        log_processor=SimpleLogRecordProcessor(log_exporter),
+        set_global=False,
+    )
     try:
-        yield TestClient(app), exporter
+        yield TestClient(app), exporter, log_exporter
     finally:
         FastAPIInstrumentor.uninstrument_app(app)
         SQLAlchemyInstrumentor().uninstrument()
+        for name in ("", "uvicorn", "uvicorn.access"):
+            log = logging.getLogger(name)
+            for handler in [h for h in log.handlers if isinstance(h, LoggingHandler)]:
+                log.removeHandler(handler)
 
 
-def test_requests_and_queries_are_traced_with_resource(
-    instrumented: tuple[TestClient, InMemorySpanExporter],
-) -> None:
-    client, exporter = instrumented
+def test_requests_and_queries_are_traced_with_resource(instrumented: Instrumented) -> None:
+    client, exporter, _ = instrumented
     assert client.get("/count").json() == {"n": 1}
 
     spans = exporter.get_finished_spans()
@@ -92,7 +108,21 @@ def test_requests_and_queries_are_traced_with_resource(
         assert span.resource.attributes["service.version"] == "20261005-120000-abc1234"
 
 
-def test_health_checks_are_not_traced(instrumented: tuple[TestClient, InMemorySpanExporter]) -> None:
-    client, exporter = instrumented
+def test_health_checks_are_not_traced(instrumented: Instrumented) -> None:
+    client, exporter, _ = instrumented
     client.get("/health")
     assert not [s for s in exporter.get_finished_spans() if s.attributes.get("http.route") == "/health"]
+
+
+def test_logs_are_exported_with_resource_and_trace(instrumented: Instrumented) -> None:
+    client, exporter, log_exporter = instrumented
+    client.get("/count")
+
+    records = [r for r in log_exporter.get_finished_logs() if r.log_record.body == "counting"]
+    assert records
+    record = records[0]
+    assert record.resource.attributes["deployment.environment.name"] == "dev"
+    assert record.resource.attributes["service.version"] == "20261005-120000-abc1234"
+    # Logged inside the request, so it carries that request's trace.
+    server = next(s for s in exporter.get_finished_spans() if s.attributes.get("http.route") == "/count")
+    assert record.log_record.trace_id == server.context.trace_id

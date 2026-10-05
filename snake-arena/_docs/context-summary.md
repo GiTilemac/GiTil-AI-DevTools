@@ -72,6 +72,14 @@ describe the frontend as mock-backed — safe to trust again.
 
 ## Recent history (newest first)
 
+- *(branch `observability-stack`, 2026-10-06)* — `observability/`: a
+  separate Compose project (`snake-arena-observability`) with an
+  OpenTelemetry Collector (contrib 0.162), Tempo 3.1, Prometheus 3.15
+  (native OTLP receiver), Loki 3.7 (native OTLP) and Grafana 13.2
+  (provisioned data sources with trace↔log links). The app joins via
+  the `compose.app.yml` overlay (shared external network). The app now
+  also exports logs over OTLP (`opentelemetry-instrumentation-logging`
+  handler on root + uvicorn loggers). Verified end to end locally.
 - *(branch `opentelemetry`, 2026-10-05)* — OpenTelemetry in the
   backend (`app/telemetry.py`, wired in `app/main.py`): FastAPI and
   SQLAlchemy traces + metrics, `/health` excluded, exported over

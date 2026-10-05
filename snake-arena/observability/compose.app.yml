@@ -1,0 +1,20 @@
+# Overlay for the application stack (../docker-compose.yml): joins the
+# app to this stack's network and sends its telemetry to the collector.
+# Start the observability stack first, then, from snake-arena/:
+#
+#   docker compose -f docker-compose.yml -f observability/compose.app.yml up --build
+#
+# Without this file the app stack runs as before and exports nothing.
+services:
+  app:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      DEPLOYMENT_ENVIRONMENT: local
+    networks:
+      - default
+      - observability
+
+networks:
+  observability:
+    name: snake-arena-observability
+    external: true

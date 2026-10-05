@@ -57,6 +57,8 @@ are never altered either. See *Database changes* in
   because Render and the workflows poll it constantly.
 - **Metrics** from the same instrumentations (request durations,
   connection pool usage).
+- **Logs**: Python logging from the app and uvicorn (including access
+  logs). Records logged during a request carry its trace and span IDs.
 
 Every span and metric carries these resource attributes:
 
@@ -95,7 +97,14 @@ In Grafana, **Explore → Tempo** shows traces; filter with
 `resource.deployment.environment="production"` (or `"dev"`) and group
 by `resource.service.version` to compare releases.
 
-To see spans locally:
+### Local: self-hosted stack
+
+`observability/` is a separate Docker Compose project with an
+OpenTelemetry Collector, Prometheus, Loki, Tempo and Grafana. Run the
+app against it with the `observability/compose.app.yml` overlay. See
+[observability/README.md](../observability/README.md).
+
+To just print spans locally:
 
 ```bash
 OTEL_TRACES_EXPORTER=console uv run uvicorn app.main:app --reload
