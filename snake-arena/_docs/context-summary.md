@@ -72,6 +72,20 @@ describe the frontend as mock-backed — safe to trust again.
 
 ## Recent history (newest first)
 
+- *(branch `build-push-image`, 2026-10-05)* — Split delivery into
+  **build** and **deploy**. CI's `build` job (pushes to `main`, after
+  tests) builds the image once and pushes
+  `ghcr.io/gitilemac/snake-arena:<YYYYMMDD-HHMMSS-shortsha>`, with the
+  tag baked in as `APP_VERSION` and reported by `/health` as `version`
+  (replacing `commit`/`RENDER_GIT_COMMIT`). Render services are now
+  image-backed (`runtime: image`, `:dev` / `:prod` moving tags in
+  `render.yaml`). `deploy.yml` is a reusable workflow: deploy hook with
+  `imgURL` → wait for `/health` version → move `dev`/`prod` tag →
+  smoke tests. CI calls it for dev; `promote.yml` reads dev's version
+  and calls it for production. The `production` git branch and
+  `PROMOTE_TOKEN` are no longer used. Needs secrets
+  `RENDER_DEPLOY_HOOK_DEV` / `RENDER_DEPLOY_HOOK_PROD` and a public
+  GHCR package.
 - *(branch `add-production-environment`, 2026-10-05)* — Render now
   has two environments, **dev** and **production**; staging removed.
   `render.yaml` defines dev (`snake-arena` on `main`) and production

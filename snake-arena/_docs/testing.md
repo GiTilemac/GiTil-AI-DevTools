@@ -94,19 +94,18 @@ There are three workflows in `.github/workflows/`.
    waits for `/health`, runs the smoke suite, prints `docker compose logs`
    if anything fails, and always tears the stack down.
 
-`deploy.yml` (**Deploy**) starts when a CI run finishes. If CI passed
-for a push to `main`, it runs `verify-dev-deploy`. That job waits for
-dev's `/health` to report the pushed commit, then runs the same smoke
-suite against the live dev deploy.
+On a push to `main`, once all three pass, `build` builds the image and
+pushes it to GHCR, and `deploy-dev` runs `deploy.yml` (**Deploy**) for
+dev. Deploy has Render pull that exact image, waits for dev's `/health`
+to report its tag, then runs the same smoke suite against the live dev
+deploy.
 
-`promote.yml` (**Promote to production**) is run by hand. It runs the
-smoke suite against dev before promoting, and against production once
-the promoted commit is live there.
+`promote.yml` (**Promote to production**) is run by hand. It runs
+Deploy for production with the image dev is running, so the same smoke
+suite runs against production once that image is live there.
 
-If a CI job fails, the jobs after it are skipped and Deploy doesn't
-verify anything. This does
-**not** stop Render from deploying. See
-[release-process.md](release-process.md).
+If a CI job fails, the jobs after it are skipped: no image is built and
+nothing is deployed. See [release-process.md](release-process.md).
 
 ## Adding tests
 
