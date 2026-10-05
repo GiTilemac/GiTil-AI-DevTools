@@ -5,7 +5,7 @@ the built frontend on port 8000. The only thing it needs is a database,
 set through `DATABASE_URL`. That same image runs locally under Docker
 Compose and on Render.
 
-For how a change moves from staging to production, see
+For how a change moves from dev to production, see
 [release-process.md](release-process.md).
 
 ## The image (`Dockerfile`)
@@ -54,54 +54,91 @@ credentials (`snake`/`snake`) are for development only.
 
 ## Render
 
-`render.yaml`, at the repo root, is a Render Blueprint:
+There are two independent copies of the infrastructure, each its own
+Render Blueprint at the repo root:
 
-| Service               | Branch    | Plan | Health check |
-|-----------------------|-----------|------|--------------|
-| `snake-arena`         | `main`    | free | `/health`    |
-| `snake-arena-staging` | `staging` | free | `/health`    |
-| `snake-arena-db` (Postgres) | –   | free | –            |
+| Environment | Blueprint                | Service               | Branch       | Database              |
+|-------------|--------------------------|-----------------------|--------------|-----------------------|
+| Dev         | `render.yaml`            | `snake-arena`         | `main`       | `snake-arena-db`      |
+| Dev         | `render.yaml`            | `snake-arena-staging` | `staging`    | `snake-arena-db`      |
+| Production  | `render.production.yaml` | `snake-arena-prod`    | `production` | `snake-arena-prod-db` |
 
-Both web services build `snake-arena/Dockerfile` and get `DATABASE_URL`
-from `snake-arena-db`.
+Every service builds `snake-arena/Dockerfile`, runs on the free plan,
+uses `/health` as its health check, and gets `DATABASE_URL` from its
+own environment's database. Dev and production share nothing: separate
+services, separate databases, separate data.
+
+The dev service names are unchanged from when `render.yaml` was the
+only Blueprint, because Render identifies Blueprint services by name.
+Renaming them would create new services and leave the old ones behind.
 
 ### First-time setup
 
-1. Push the repo to GitHub, including the `staging` branch.
-2. In Render, go to **New → Blueprint**, pick the repo, and click
-   **Apply**. Render creates the database and both services.
-3. In GitHub, go to **Settings → Secrets and variables → Actions →
-   Variables** and set `RENDER_URL_STAGING` and `RENDER_URL_PRODUCTION`
-   to each service's base URL. The Deploy workflow's verify jobs fail until these are
-   set.
+Dev (`render.yaml`) is already applied. For production:
+
+1. Create the `production` branch from the commit currently deployed
+   from `main` and push it:
+
+   ```bash
+   git fetch origin
+   git push origin origin/main:refs/heads/production
+   ```
+
+2. In Render, switch to (or create) a **separate workspace** for
+   production. The free tier allows only one active Postgres database
+   per workspace, and dev's database already uses it. To keep both in
+   one workspace, put one of the two databases on a paid plan instead.
+3. Go to **New → Blueprint**, pick the repo, set **Blueprint path** to
+   `render.production.yaml`, and click **Apply**. Render creates
+   `snake-arena-prod-db` and `snake-arena-prod`. Tables are created on
+   first boot.
+4. In GitHub, go to **Settings → Secrets and variables → Actions →
+   Variables** and set:
+
+   | Variable             | Value                                  |
+   |----------------------|----------------------------------------|
+   | `RENDER_URL_STAGING` | dev staging service URL (unchanged)    |
+   | `RENDER_URL_DEV`     | `snake-arena` service URL              |
+   | `RENDER_URL_PROD`    | `snake-arena-prod` service URL         |
+
+   Delete the old `RENDER_URL_PRODUCTION` variable; it pointed at the
+   service that is now dev, and nothing reads it any more. The Deploy
+   workflow's verify jobs fail until their variable is set.
+
+Production starts with an empty database. Dev data (users, scores) is
+not copied over.
 
 ### How deploys happen
 
-- Render **auto-deploys every push** to `main` or `staging`. The CI
-  workflow doesn't start or gate the deploy, because Render only
-  supports a static API key or deploy hook, not GitHub OIDC.
+- Render **auto-deploys every push** to `staging`, `main` (dev) and
+  `production`. The CI workflow doesn't start or gate the deploy,
+  because Render only supports a static API key or deploy hook, not
+  GitHub OIDC.
 - Once the **CI** workflow (`.github/workflows/ci.yml`) passes for that
   push, the **Deploy** workflow (`.github/workflows/deploy.yml`) starts.
-  Its `verify-*-deploy` job waits up to about 10 minutes for `/health`
-  and then runs `integration-tests/` against the live URL. That way a
-  broken deploy shows up as a failed run.
+  Its `verify-staging-deploy`, `verify-dev-deploy` or
+  `verify-production-deploy` job waits up to about 10 minutes for
+  `/health` and then runs `integration-tests/` against the live URL.
+  That way a broken deploy shows up as a failed run.
 - Deploy is triggered by `workflow_run`, and GitHub only uses the copy
   of `deploy.yml` on `main`. A change to that file only takes effect
-  once it's on `main`, even for staging runs.
-- Setting `autoDeployTrigger: checksPass` on the services in
-  `render.yaml` would make Render wait for green GitHub checks before
-  deploying. It isn't enabled yet.
+  once it's on `main`, even for staging and production runs.
+- Setting `autoDeployTrigger: checksPass` on the services would make
+  Render wait for green GitHub checks before deploying. It isn't
+  enabled yet.
 
 ### Caveats
 
-- **Shared database.** Staging and production use the same Postgres,
-  because the free tier allows only one database. Staging users, scores
-  and CI `ci-smoke-*` entries all appear on the production leaderboard.
-  To isolate them, put the database on a paid plan and add a second
-  database for staging.
+- **Dev staging and dev `main` share a database.** Anything done on
+  the staging service shows up on the dev leaderboard. Production is
+  not affected.
+- **Smoke-test data in production.** Each `verify-production-deploy`
+  run writes a `ci-smoke-*` user and score into the production
+  database, so they appear on the production leaderboard.
 - **Free plans.** Web services spin down when idle, so the first request
   after a while is slow. Free databases expire after a limited period.
-  Switch the `plan` fields to a paid plan for anything long-lived.
+  Switch the `plan` fields in `render.production.yaml` to paid plans
+  before relying on production for anything long-lived.
 - **`/leaderboard` on a hard refresh** returns the API's JSON instead of
   the page, because the frontend route and the API endpoint share a
   path. See the README's *Known limitation* section.
@@ -111,4 +148,4 @@ from `snake-arena-db`.
 In the Render dashboard, open the service → **Deploys** → the last good
 deploy → **Rollback**. This reuses the old build, so there's no rebuild.
 Rolling back **turns off auto-deploy** for that service. Turn it back on
-once the fix has gone through staging.
+once the fix has gone through dev.

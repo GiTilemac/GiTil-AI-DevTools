@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main, staging, production]
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, production]
 
 defaults:
   run:

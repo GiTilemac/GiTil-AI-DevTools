@@ -1,7 +1,7 @@
 # Testing Snake Arena
 
 Snake Arena has three test suites. Each one covers a different layer, and
-CI runs all three on every push and PR to `main`/`staging`.
+CI runs all three on every push and PR to `staging`/`main`/`production`.
 
 | Suite            | Location              | Runs against                                  | Tool                  |
 |------------------|-----------------------|-----------------------------------------------|-----------------------|
@@ -79,14 +79,16 @@ BASE_URL=https://<service>.onrender.com uv run pytest ../integration-tests -v
 ```
 
 Each run creates a user named `ci-smoke-<random>` with a score. On
-Render that data lands in the shared staging/production database (see
-[deployment.md](deployment.md)), so it shows up on the live leaderboard.
+Render that data lands in the target environment's database (dev's is
+shared by staging and `main`; production has its own, see
+[deployment.md](deployment.md)), so it shows up on that environment's
+leaderboard.
 
 ## In CI
 
 There are two workflows in `.github/workflows/`.
 
-`ci.yml` (**CI**) runs on every push and PR to `main`/`staging`:
+`ci.yml` (**CI**) runs on every push and PR to `staging`/`main`/`production`:
 
 1. `backend-tests` and `frontend-tests` run in parallel.
 2. `integration-e2e` runs only if both pass. It boots `docker-compose.yml`,
@@ -94,7 +96,8 @@ There are two workflows in `.github/workflows/`.
    if anything fails, and always tears the stack down.
 
 `deploy.yml` (**Deploy**) starts when a CI run finishes. If CI passed
-for a push to `staging` or `main`, it runs `verify-staging-deploy` or
+for a push to `staging`, `main` or `production`, it runs
+`verify-staging-deploy`, `verify-dev-deploy` or
 `verify-production-deploy`, which runs the same smoke suite against the
 live Render deploy.
 

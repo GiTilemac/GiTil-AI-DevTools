@@ -1,9 +1,10 @@
 name: Deploy
 
-# Render's Blueprint auto-deploys on every push to main/staging
-# independently of GitHub Actions (there's no GitHub OIDC support in
-# Render - deploys only accept a static API key/deploy-hook secret, so
-# we're not driving the deploy from CI). This workflow instead confirms
+# Render auto-deploys every push to staging/main (dev, render.yaml) and
+# production (render.production.yaml) independently of GitHub Actions
+# (there's no GitHub OIDC support in Render - deploys only accept a
+# static API key/deploy-hook secret, so we're not driving the deploy
+# from CI). This workflow instead confirms
 # the result against the real, live deploy once the CI workflow has
 # passed for a push: wait for it to report healthy, then run the same
 # black-box smoke suite used against the local Docker Compose stack
@@ -13,12 +14,12 @@ name: Deploy
 # leaderboard as a side effect.
 #
 # Note: workflow_run only fires for the copy of this file on the default
-# branch (main), including for CI runs on staging.
+# branch (main), including for CI runs on staging and production.
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-    branches: [main, staging]
+    branches: [main, staging, production]
 
 defaults:
   run:
@@ -65,8 +66,8 @@ jobs:
           BASE_URL: ${{ vars.RENDER_URL_STAGING }}
         run: uv run pytest ../integration-tests -v
 
-  verify-production-deploy:
-    name: Verify production deploy
+  verify-dev-deploy:
+    name: Verify dev deploy
     runs-on: ubuntu-latest
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
@@ -85,10 +86,50 @@ jobs:
       - run: uv sync
       - name: Wait for the deploy to become healthy
         env:
-          BASE_URL: ${{ vars.RENDER_URL_PRODUCTION }}
+          BASE_URL: ${{ vars.RENDER_URL_DEV }}
         run: |
           if [ -z "$BASE_URL" ]; then
-            echo "Set the RENDER_URL_PRODUCTION repo variable (Settings > Secrets and variables > Actions > Variables tab) to https://<your-production-service>.onrender.com" >&2
+            echo "Set the RENDER_URL_DEV repo variable (Settings > Secrets and variables > Actions > Variables tab) to https://<your-dev-service>.onrender.com" >&2
+            exit 1
+          fi
+          for i in $(seq 1 60); do
+            if curl -sf "$BASE_URL/health" > /dev/null; then
+              echo "Deploy is healthy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Deployed app did not report healthy within the timeout" >&2
+          exit 1
+      - name: Run smoke tests against the live dev deploy
+        env:
+          BASE_URL: ${{ vars.RENDER_URL_DEV }}
+        run: uv run pytest ../integration-tests -v
+
+  verify-production-deploy:
+    name: Verify production deploy
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'production'
+    defaults:
+      run:
+        working-directory: snake-arena/backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Wait for the deploy to become healthy
+        env:
+          BASE_URL: ${{ vars.RENDER_URL_PROD }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "Set the RENDER_URL_PROD repo variable (Settings > Secrets and variables > Actions > Variables tab) to https://<your-production-service>.onrender.com" >&2
             exit 1
           fi
           for i in $(seq 1 60); do
@@ -102,5 +143,5 @@ jobs:
           exit 1
       - name: Run smoke tests against the live production deploy
         env:
-          BASE_URL: ${{ vars.RENDER_URL_PRODUCTION }}
+          BASE_URL: ${{ vars.RENDER_URL_PROD }}
         run: uv run pytest ../integration-tests -v

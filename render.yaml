@@ -1,4 +1,9 @@
+# Dev environment. Production is a separate, independent copy of this
+# infrastructure in render.production.yaml (own service, own database).
+# Service names are kept as they were so Render keeps updating the
+# existing services instead of creating new ones.
 services:
+  # Dev: deploys from `main`.
   - type: web
     name: snake-arena
     runtime: docker
@@ -14,11 +19,10 @@ services:
           name: snake-arena-db
           property: connectionString
 
-  # Staging: same image, deployed from the `staging` branch, so changes
-  # can be verified against a real deploy before being promoted to
-  # `main` (production, above). Shares production's database (Render's
-  # free tier allows only one active database per account) - see the
-  # README's Render section for what that trade-off means in practice.
+  # Dev staging: same image, deployed from the `staging` branch, so
+  # changes can be checked against a real deploy before they reach
+  # `main`. Shares the dev database with the service above (Render's free
+  # tier allows only one active database per workspace).
   - type: web
     name: snake-arena-staging
     runtime: docker
