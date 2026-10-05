@@ -25,8 +25,7 @@ concurrency:
 # name is taken, so these come from each service's page in the dashboard.
 env:
   DEV_URL: https://snake-arena-yl77.onrender.com
-  # Fill in from the snake-arena-prod service page in Render.
-  PROD_URL: ""
+  PROD_URL: https://snake-arena-prod.onrender.com
 
 defaults:
   run:

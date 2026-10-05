@@ -99,10 +99,10 @@ leave the old one behind.
    missing from `main`.
 4. Put the service URLs into the workflows. Render appends a random
    suffix when a name is taken, so copy each URL from the top of its
-   service page: `DEV_URL` in `deploy.yml` and `promote.yml` (already
-   `https://snake-arena-yl77.onrender.com`), and `PROD_URL` in
-   `promote.yml`. Promote stops before deploying anything while
-   `PROD_URL` is empty. The old `RENDER_URL_*` repo variables are no
+   service page: `DEV_URL` in `deploy.yml` and `promote.yml`
+   (`https://snake-arena-yl77.onrender.com`), and `PROD_URL` in
+   `promote.yml` (`https://snake-arena-prod.onrender.com`). Promote
+   stops before deploying anything if `PROD_URL` is empty. The old `RENDER_URL_*` repo variables are no
    longer read and can be deleted.
 5. Optional: the first Promote run creates a `production` environment
    in GitHub (**Settings → Environments**). Add required reviewers
