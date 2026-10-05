@@ -23,6 +23,11 @@ on:
     types: [completed]
     branches: [main]
 
+# Render service URLs. Render appends a random suffix when a service
+# name is taken, so these come from each service's page in the dashboard.
+env:
+  DEV_URL: https://snake-arena-yl77.onrender.com
+
 defaults:
   run:
     shell: bash
@@ -48,13 +53,9 @@ jobs:
       - run: uv sync
       - name: Wait for the commit to be live on dev
         env:
-          BASE_URL: ${{ vars.RENDER_URL_DEV }}
+          BASE_URL: ${{ env.DEV_URL }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if [ -z "$BASE_URL" ]; then
-            echo "Set the RENDER_URL_DEV repo variable (Settings > Secrets and variables > Actions > Variables tab) to https://<your-dev-service>.onrender.com" >&2
-            exit 1
-          fi
           for i in $(seq 1 90); do
             commit=$(curl -sf "$BASE_URL/health" | jq -r '.commit // empty' || true)
             if [ "$commit" = "$SHA" ]; then
@@ -68,5 +69,5 @@ jobs:
           exit 1
       - name: Run smoke tests against the live dev deploy
         env:
-          BASE_URL: ${{ vars.RENDER_URL_DEV }}
+          BASE_URL: ${{ env.DEV_URL }}
         run: uv run pytest ../integration-tests -v

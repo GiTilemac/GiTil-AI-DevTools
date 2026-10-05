@@ -52,15 +52,14 @@ Postgres database (`snake-arena-db`):
 
 Changes merge to `main` and land in dev. The manually-run **Promote to
 production** workflow then ships the commit dev is running: it
-fast-forwards `production` to it after an approval. See
+fast-forwards `production` to it (optionally after an approval). See
 `_docs/release-process.md`.
 
 **Dev and production are not data-isolated.** Render's free tier
 allows only one active database, so anything dev writes (including CI's
 `ci-smoke-*` test users and scores) shows up on the production
-leaderboard. Setup steps, including the GitHub variables
-(`RENDER_URL_DEV`, `RENDER_URL_PROD`) and the `production` environment,
-are in `_docs/deployment.md`.
+leaderboard. Setup steps, including where the service URLs go in the
+workflows, are in `_docs/deployment.md`.
 
 The free plans in `render.yaml` are dev-only (Render expires free
 databases after a limited period, and free web services spin down when

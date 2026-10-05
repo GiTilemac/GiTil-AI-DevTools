@@ -97,19 +97,17 @@ leave the old one behind.
    in the Render dashboard (service → **Settings** → **Delete Web
    Service**). Delete the `staging` branch once nothing on it is
    missing from `main`.
-4. In GitHub, go to **Settings → Secrets and variables → Actions →
-   Variables** and set:
-
-   | Variable          | Value                          |
-   |-------------------|--------------------------------|
-   | `RENDER_URL_DEV`  | `snake-arena` service URL      |
-   | `RENDER_URL_PROD` | `snake-arena-prod` service URL |
-
-   Delete `RENDER_URL_STAGING` and `RENDER_URL_PRODUCTION`; nothing
-   reads them any more.
-5. Go to **Settings → Environments**, create an environment named
-   `production`, and add required reviewers so that every promotion
-   needs an approval.
+4. Put the service URLs into the workflows. Render appends a random
+   suffix when a name is taken, so copy each URL from the top of its
+   service page: `DEV_URL` in `deploy.yml` and `promote.yml` (already
+   `https://snake-arena-yl77.onrender.com`), and `PROD_URL` in
+   `promote.yml`. Promote stops before deploying anything while
+   `PROD_URL` is empty. The old `RENDER_URL_*` repo variables are no
+   longer read and can be deleted.
+5. Optional: the first Promote run creates a `production` environment
+   in GitHub (**Settings → Environments**). Add required reviewers
+   there if promotions should need an approval; without them, Promote
+   runs straight through.
 6. If `production` has branch protection, make sure the Promote
    workflow can still push to it, or it will fail at the push.
 7. Once **Verify dev deploy** passes for the merge, run **Promote to
@@ -127,7 +125,8 @@ leave the old one behind.
 - **Production:** only the manually-run **Promote to production**
   workflow (`.github/workflows/promote.yml`) deploys it. It finds the
   commit dev is running, checks that the commit is on `main` and passed
-  CI, smoke-tests dev, and waits for approval. Then it fast-forwards
+  CI, smoke-tests dev, and waits for approval if the `production`
+  environment has reviewers. Then it fast-forwards
   `production` to that commit. Render deploys it, and the workflow
   waits for production's `/health` to report the commit and runs
   `integration-tests/` against production.

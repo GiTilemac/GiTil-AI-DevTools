@@ -21,6 +21,13 @@ concurrency:
   group: promote-production
   cancel-in-progress: false
 
+# Render service URLs. Render appends a random suffix when a service
+# name is taken, so these come from each service's page in the dashboard.
+env:
+  DEV_URL: https://snake-arena-yl77.onrender.com
+  # Fill in from the snake-arena-prod service page in Render.
+  PROD_URL: ""
+
 defaults:
   run:
     shell: bash
@@ -40,15 +47,17 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+      - name: Check the production URL is set
+        run: |
+          if [ -z "$PROD_URL" ]; then
+            echo "Set PROD_URL at the top of promote.yml to the snake-arena-prod URL from the Render dashboard" >&2
+            exit 1
+          fi
       - name: Find the commit dev is running
         id: dev
         env:
-          BASE_URL: ${{ vars.RENDER_URL_DEV }}
+          BASE_URL: ${{ env.DEV_URL }}
         run: |
-          if [ -z "$BASE_URL" ]; then
-            echo "Set the RENDER_URL_DEV repo variable to https://<your-dev-service>.onrender.com" >&2
-            exit 1
-          fi
           sha=$(curl -sf "$BASE_URL/health" | jq -r '.commit // empty') || {
             echo "Dev at $BASE_URL is not healthy" >&2
             exit 1
@@ -119,7 +128,7 @@ jobs:
         if: steps.ff.outputs.up_to_date == 'false'
         working-directory: snake-arena/backend
         env:
-          BASE_URL: ${{ vars.RENDER_URL_DEV }}
+          BASE_URL: ${{ env.DEV_URL }}
         run: |
           uv sync
           uv run pytest ../integration-tests -v
@@ -155,13 +164,9 @@ jobs:
         working-directory: snake-arena/backend
       - name: Wait for the commit to be live on production
         env:
-          BASE_URL: ${{ vars.RENDER_URL_PROD }}
+          BASE_URL: ${{ env.PROD_URL }}
           SHA: ${{ needs.prepare.outputs.sha }}
         run: |
-          if [ -z "$BASE_URL" ]; then
-            echo "Set the RENDER_URL_PROD variable to https://<your-production-service>.onrender.com" >&2
-            exit 1
-          fi
           for i in $(seq 1 90); do
             commit=$(curl -sf "$BASE_URL/health" | jq -r '.commit // empty' || true)
             if [ "$commit" = "$SHA" ]; then
@@ -176,5 +181,5 @@ jobs:
       - name: Run smoke tests against the live production deploy
         working-directory: snake-arena/backend
         env:
-          BASE_URL: ${{ vars.RENDER_URL_PROD }}
+          BASE_URL: ${{ env.PROD_URL }}
         run: uv run pytest ../integration-tests -v

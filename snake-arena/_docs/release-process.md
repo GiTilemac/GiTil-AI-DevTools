@@ -34,8 +34,8 @@ only the Promote workflow moves it.
    commit dev is running, checks it's on `main` and passed CI, and
    smoke-tests dev. Its summary lists the commits that will ship, and
    warns if `db_models.py` changed.
-4. **Approve.** A reviewer for the `production` environment approves
-   the waiting job. It fast-forwards `production` to that commit, waits
+4. **Approve** (only if the `production` environment has required
+   reviewers). A reviewer approves the waiting job. It fast-forwards `production` to that commit, waits
    for Render to deploy it, and runs `integration-tests/` against
    production.
 5. **Check production by hand.** Do a quick manual check of the
@@ -78,6 +78,6 @@ changed column on an existing table won't be applied on deploy. So:
 - [ ] PR into `main` is green and merged
 - [ ] *Verify dev deploy* passed and manual check on dev done
 - [ ] Any schema change is backward compatible with production's code
-- [ ] *Promote to production* run and approved
+- [ ] *Promote to production* run (and approved, if reviewers are set)
 - [ ] Production verification in that run passed
 - [ ] Manual check on production done
