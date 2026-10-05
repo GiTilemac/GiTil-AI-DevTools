@@ -1,0 +1,79 @@
+# promtool unit tests for snake-arena-alerts.yml. Run from this directory:
+#   docker run --rm -v "$PWD:/rules" -w /rules --entrypoint promtool \
+#     prom/prometheus:v3.15.0 test rules snake-arena-alerts.test.yml
+rule_files:
+  - snake-arena-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Production on a bad release: 1 failure/min, 1 success/min (50%).
+  # Fires once it has met the threshold for 5 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'snake_arena_games_creation_failures_total{job="snake-arena", deployment_environment_name="production", service_version="20261006-120000-abc1234", error_type="RuntimeError", game_mode="walls"}'
+        values: "0+1x30"
+      - series: 'snake_arena_games_created_total{job="snake-arena", deployment_environment_name="production", service_version="20261006-120000-abc1234", game_mode="walls"}'
+        values: "0+1x30"
+    alert_rule_test:
+      # 3 failures in the window by minute 3, but not yet sustained 5m.
+      - eval_time: 5m
+        alertname: GameCreationFailing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: GameCreationFailing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: snake-arena
+              environment: production
+              version: 20261006-120000-abc1234
+              owner: snake-arena-maintainers
+              job: snake-arena
+              deployment_environment_name: production
+              service_version: 20261006-120000-abc1234
+            exp_annotations:
+              summary: "snake-arena (production, 20261006-120000-abc1234): players can't start games"
+              description: "50% of game starts failed over the last 10 minutes in production on version 20261006-120000-abc1234. Players see an error instead of a game. Check the failures by error_type on the dashboard, then follow the runbook: roll back if this started with a deploy."
+              dashboard_url: "http://localhost:3000/d/snake-arena-games?var-environment=production&var-version=20261006-120000-abc1234&from=now-1h&to=now"
+              runbook_url: https://github.com/GiTilemac/GiTil-AI-DevTools/blob/main/snake-arena/_docs/runbooks/game-creation-failing.md
+
+  # Busy and mostly healthy: 1 failure/min against 20 successes/min
+  # (~5%). Many failures in absolute terms, but below the ratio.
+  - interval: 1m
+    input_series:
+      - series: 'snake_arena_games_creation_failures_total{job="snake-arena", deployment_environment_name="production", service_version="v1", error_type="too_many_games", game_mode="walls"}'
+        values: "0+1x30"
+      - series: 'snake_arena_games_created_total{job="snake-arena", deployment_environment_name="production", service_version="v1", game_mode="walls"}'
+        values: "0+20x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: GameCreationFailing
+        exp_alerts: []
+
+  # Quiet period: one player hit two errors and nothing else happened
+  # (100%, but only 2 failures). Below the minimum count.
+  - interval: 1m
+    input_series:
+      - series: 'snake_arena_games_creation_failures_total{job="snake-arena", deployment_environment_name="dev", service_version="v1", error_type="invalid_mode"}'
+        values: "0 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2"
+      - series: 'snake_arena_games_created_total{job="snake-arena", deployment_environment_name="dev", service_version="v1", game_mode="walls"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: GameCreationFailing
+        exp_alerts: []
+
+  # A single burst that recovers: 6 failures in one minute, then healthy.
+  # The burst stays in the 10m window long enough to fire briefly, but
+  # the alert clears by itself once it has left the window.
+  - interval: 1m
+    input_series:
+      - series: 'snake_arena_games_creation_failures_total{job="snake-arena", deployment_environment_name="production", service_version="v2", error_type="RuntimeError"}'
+        values: "0 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6"
+      - series: 'snake_arena_games_created_total{job="snake-arena", deployment_environment_name="production", service_version="v2", game_mode="walls"}'
+        values: "0+1x24"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: GameCreationFailing
+        exp_alerts: []

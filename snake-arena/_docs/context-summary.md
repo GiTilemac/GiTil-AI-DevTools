@@ -72,6 +72,18 @@ describe the frontend as mock-backed — safe to trust again.
 
 ## Recent history (newest first)
 
+- *(branch `game-metrics`, 2026-10-06)* — Games dashboard
+  (`observability/grafana/provisioning/dashboards/snake-arena-games.json`,
+  environment/version filters; game counters are observable from 0 so
+  increase() doesn't miss the first games). Alert **GameCreationFailing**
+  (`observability/prometheus/rules/`, promtool-tested; >=20% and >=3
+  failed starts in 10m, for 5m, per env+version; labels service,
+  environment, version, owner; dashboard + runbook URLs). Runbook in
+  `_docs/runbooks/`. `observability/grafana-cloud/apply-alert-rules.sh`
+  uploads rules to Grafana Cloud (chosen as the deployed observability
+  stack; no self-hosted deployment). `on-call-engineer/poll_alerts.py`
+  polls `/api/v1/alerts` each minute and runs a read-only headless
+  `claude -p` per new firing alert, writing `incidents/*/report.md`.
 - *(branch `game-metrics`, 2026-10-06)* — Game metrics. Games still run
   in the browser; new `POST /games`, `/games/{id}/heartbeat`,
   `/games/{id}/end` (open to guests, in `openapi.yaml`) track sessions

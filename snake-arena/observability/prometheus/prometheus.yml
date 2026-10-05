@@ -15,6 +15,12 @@ storage:
     # OTLP batches can arrive slightly out of order.
     out_of_order_time_window: 30m
 
+# Alerting rules (the *.test.yml files next to them are promtool tests,
+# not rules). Firing alerts are listed at /api/v1/alerts, which the
+# on-call poller (snake-arena/on-call-engineer/) reads.
+rule_files:
+  - /etc/prometheus/rules/*-alerts.yml
+
 scrape_configs:
   - job_name: prometheus
     static_configs:

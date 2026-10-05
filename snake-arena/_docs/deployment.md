@@ -132,6 +132,26 @@ In Grafana, **Explore → Tempo** shows traces; filter with
 `resource.deployment.environment="production"` (or `"dev"`) and group
 by `resource.service.version` to compare releases.
 
+### Alerts and on-call
+
+The deployed environments' observability stack is Grafana Cloud. Two
+one-time steps there:
+
+1. **Dashboard:** Dashboards → New → Import →
+   `observability/grafana/provisioning/dashboards/snake-arena-games.json`,
+   then pick the stack's Prometheus as *Data source*.
+2. **Alert rules:** run `observability/grafana-cloud/apply-alert-rules.sh`
+   with the stack's Prometheus URL, instance ID, a `rules:write` token
+   and the Grafana URL. Re-run it whenever the rules change.
+
+Rules: `observability/prometheus/rules/snake-arena-alerts.yml`
+(**GameCreationFailing**; runbook in
+[runbooks/game-creation-failing.md](runbooks/game-creation-failing.md)).
+`on-call-engineer/poll_alerts.py` polls the alerts API every minute and
+hands each new firing alert to a read-only headless Claude Code, which
+writes an incident report. See
+[on-call-engineer/README.md](../on-call-engineer/README.md).
+
 ### Local: self-hosted stack
 
 `observability/` is a separate Docker Compose project with an

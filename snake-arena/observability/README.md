@@ -89,6 +89,34 @@ report no version.
 To use it in Grafana Cloud: **Dashboards → New → Import**, upload the
 JSON, then pick the stack's Prometheus data source in *Data source*.
 
+## Alerts
+
+`prometheus/rules/snake-arena-alerts.yml` is loaded by Prometheus:
+
+- **GameCreationFailing** (critical): at least 20% of game starts, and
+  at least 3, failed over 10 minutes, for 5 minutes, per environment and
+  version. Labels: `service`, `environment`, `version`, `owner`,
+  `severity`. Annotations: `summary`, `description`, `dashboard_url`
+  (the games dashboard filtered to that environment and version),
+  `runbook_url` (`../_docs/runbooks/game-creation-failing.md`).
+
+Firing alerts: http://localhost:9090/alerts, or
+`GET /api/v1/alerts`, which the on-call poller
+(`../on-call-engineer/`) reads. There's no Alertmanager in this stack,
+so nothing sends notifications; the poller is the consumer.
+
+Test the rule after changing it:
+
+```bash
+cd prometheus/rules
+docker run --rm -v "$PWD:/rules" -w /rules --entrypoint promtool \
+  prom/prometheus:v3.15.0 test rules snake-arena-alerts.test.yml
+```
+
+For the deployed environments, upload the same rules to Grafana Cloud
+with `grafana-cloud/apply-alert-rules.sh` (it swaps the dashboard links
+to the Grafana Cloud URL).
+
 ## Files
 
 | Path                                   | What it configures                       |
@@ -97,7 +125,9 @@ JSON, then pick the stack's Prometheus data source in *Data source*.
 | `compose.app.yml`                      | Overlay connecting the app stack          |
 | `otel-collector/config.yaml`           | OTLP in; batching; export per signal      |
 | `tempo/tempo.yaml`                     | Single-process Tempo, local storage       |
-| `prometheus/prometheus.yml`            | OTLP receiver, promoted labels            |
+| `prometheus/prometheus.yml`            | OTLP receiver, promoted labels, rule files |
+| `prometheus/rules/`                    | Alerting rules and their promtool tests   |
+| `grafana-cloud/apply-alert-rules.sh`   | Uploads the rules to Grafana Cloud        |
 | `loki/loki.yaml`                       | Single-process Loki, filesystem storage   |
 | `grafana/provisioning/datasources/`    | Data sources and the links between them   |
 | `grafana/provisioning/dashboards/`     | Dashboards loaded on startup (the games dashboard; add more JSON here) |

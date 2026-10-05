@@ -1,0 +1,66 @@
+# Alerting rules for Snake Arena, in Prometheus rule format: loaded by
+# the local Prometheus (prometheus.yml `rule_files`) and uploadable
+# unchanged to Grafana Cloud's Prometheus (see
+# ../../grafana-cloud/apply-alert-rules.sh). Unit tests:
+# snake-arena-alerts.test.yml (`promtool test rules`).
+#
+# The dashboard URL points at the local Grafana; apply-alert-rules.sh
+# swaps in the Grafana Cloud URL when uploading.
+groups:
+  - name: snake-arena-games
+    rules:
+      # Players are trying to start games and a meaningful share of them
+      # can't. Thresholds:
+      #   - at least 3 failed starts in 10 minutes: more than one unlucky
+      #     request, but low enough for this low-traffic game;
+      #   - at least 20% of starts failing: real impact, not background
+      #     noise from a busy period;
+      #   - for 5 minutes: sustained, so one burst doesn't page anyone.
+      # Grouped per environment and version, so a bad release shows up
+      # as that release, and dev failures never look like production.
+      - alert: GameCreationFailing
+        # The ratio comes first so the alert's value ($value) is the
+        # failure rate.
+        expr: |
+          (
+            sum by (job, deployment_environment_name, service_version) (
+              increase(snake_arena_games_creation_failures_total[10m])
+            )
+            /
+            (
+              sum by (job, deployment_environment_name, service_version) (
+                increase(snake_arena_games_creation_failures_total[10m])
+              )
+              +
+              sum by (job, deployment_environment_name, service_version) (
+                increase(snake_arena_games_created_total[10m])
+              )
+            )
+          ) >= 0.2
+          and
+          (
+            sum by (job, deployment_environment_name, service_version) (
+              increase(snake_arena_games_creation_failures_total[10m])
+            ) >= 3
+          )
+        for: 5m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+          environment: "{{ $labels.deployment_environment_name }}"
+          version: "{{ $labels.service_version }}"
+          owner: snake-arena-maintainers
+        annotations:
+          summary: >-
+            {{ $labels.job }} ({{ $labels.deployment_environment_name }},
+            {{ $labels.service_version }}): players can't start games
+          description: >-
+            {{ $value | humanizePercentage }} of game starts failed over the
+            last 10 minutes in {{ $labels.deployment_environment_name }} on
+            version {{ $labels.service_version }}. Players see an error
+            instead of a game. Check the failures by error_type on the
+            dashboard, then follow the runbook: roll back if this started
+            with a deploy.
+          dashboard_url: >-
+            http://localhost:3000/d/snake-arena-games?var-environment={{ $labels.deployment_environment_name }}&var-version={{ $labels.service_version }}&from=now-1h&to=now
+          runbook_url: https://github.com/GiTilemac/GiTil-AI-DevTools/blob/main/snake-arena/_docs/runbooks/game-creation-failing.md
