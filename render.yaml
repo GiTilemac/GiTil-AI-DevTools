@@ -1,17 +1,24 @@
-# Dev and production. Both run the same image and share one Postgres
-# database (Render's free tier allows only one active database), so
-# anything done in dev - signups, scores, CI `ci-smoke-*` entries - shows
-# up in production. See snake-arena/_docs/deployment.md.
+# Dev and production. Neither builds anything: both pull a prebuilt
+# image from GitHub Container Registry, built and pushed by CI's `build`
+# job and tagged YYYYMMDD-HHMMSS-shortsha.
+#
+# Image-backed services don't redeploy on their own. The Deploy workflow
+# (.github/workflows/deploy.yml) deploys an exact tag through each
+# service's deploy hook, then moves the `dev` / `prod` tag to it. The
+# URLs below point at those moving tags, so a Blueprint sync (which
+# redeploys from these URLs) lands on the image already running.
+#
+# Both share one Postgres database (Render's free tier allows only one
+# active database), so anything done in dev - signups, scores, CI
+# `ci-smoke-*` entries - shows up in production. See
+# snake-arena/_docs/deployment.md.
 services:
-  # Dev: auto-deploys every push to `main`. Name kept from before so
-  # Render keeps updating the existing service.
+  # Dev: deployed by CI after every push to `main` that passes.
   - type: web
     name: snake-arena
-    runtime: docker
-    rootDir: snake-arena
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    branch: main
+    runtime: image
+    image:
+      url: ghcr.io/gitilemac/snake-arena:dev
     plan: free
     healthCheckPath: /health
     envVars:
@@ -20,17 +27,13 @@ services:
           name: snake-arena-db
           property: connectionString
 
-  # Production: deploys from the `production` branch, which only the
-  # Promote workflow (.github/workflows/promote.yml) moves, by
-  # fast-forwarding it to the commit dev is running. Don't push to it
-  # by hand.
+  # Production: deployed only by the Promote workflow
+  # (.github/workflows/promote.yml), with the image dev is running.
   - type: web
     name: snake-arena-prod
-    runtime: docker
-    rootDir: snake-arena
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    branch: production
+    runtime: image
+    image:
+      url: ghcr.io/gitilemac/snake-arena:prod
     plan: free
     healthCheckPath: /health
     envVars:

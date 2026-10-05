@@ -28,11 +28,12 @@ app.include_router(watch.router)
 
 @app.get("/health")
 async def health() -> dict[str, str | None]:
-    # Render sets RENDER_GIT_COMMIT to the deployed commit's SHA. The
-    # promote workflow polls this to know when a new deploy is live,
-    # since the previous deploy keeps answering /health until then.
-    # None anywhere else (local, Docker Compose, tests).
-    return {"status": "ok", "commit": os.environ.get("RENDER_GIT_COMMIT")}
+    # APP_VERSION is the image tag (YYYYMMDD-HHMMSS-shortsha), baked into
+    # the image at build time (see ../Dockerfile). The deploy and promote
+    # workflows poll this to know when a new image is live, and promote
+    # reads it to find which image dev is running. None for images built
+    # without it (local, Docker Compose, tests).
+    return {"status": "ok", "version": os.environ.get("APP_VERSION") or None}
 
 
 # Serves the built frontend (see ../Dockerfile, which builds frontend/ and

@@ -27,6 +27,11 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY backend/app ./app
 COPY --from=frontend-build /app/frontend/dist ./static
 
+# The image tag (YYYYMMDD-HHMMSS-shortsha), set by CI's build job and
+# reported by GET /health. Empty for local builds.
+ARG APP_VERSION=""
+ENV APP_VERSION=$APP_VERSION
+
 EXPOSE 8000
 
 CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

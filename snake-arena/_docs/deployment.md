@@ -5,6 +5,10 @@ the built frontend on port 8000. The only thing it needs is a database,
 set through `DATABASE_URL`. That same image runs locally under Docker
 Compose and on Render.
 
+CI builds the image **once** per change, pushes it to GitHub Container
+Registry, and Render pulls it. Dev and production run byte-identical
+images; production never builds anything.
+
 For how a change moves from dev to production, see
 [release-process.md](release-process.md).
 
@@ -22,7 +26,9 @@ It's a two-stage build:
 
 The backend serves `/assets` and falls back to the SPA for app routes
 when `static/` is present. The health endpoint is `GET /health`, which
-returns `{"status": "ok"}`.
+returns `{"status": "ok", "version": "<image tag>"}`. The tag comes from
+the `APP_VERSION` build argument, which CI sets. Images built without it
+(local builds, Docker Compose) report `"version": null`.
 
 ## Configuration
 
@@ -52,103 +58,113 @@ docker compose down -v           # stop and delete the database volume
 The app reaches Postgres at the hostname `db` on port `5432`. The
 credentials (`snake`/`snake`) are for development only.
 
+## Registry: GitHub Container Registry
+
+Images live at `ghcr.io/gitilemac/snake-arena`. GHCR was chosen because
+workflows push to it with the built-in `GITHUB_TOKEN` (no registry
+account or extra secret), it's free for public repositories, and
+Render pulls public images from it without credentials.
+
+| Tag                      | Meaning                                         | Moves? |
+|--------------------------|-------------------------------------------------|--------|
+| `YYYYMMDD-HHMMSS-shortsha` | One build: UTC build time + the 7-character commit SHA, e.g. `20260818-163457-83242da` | No     |
+| `dev`                    | The image currently deployed to dev             | Yes    |
+| `prod`                   | The image currently deployed to production      | Yes    |
+
+Only the timestamped tags are ever deployed by the workflows. The
+`dev`/`prod` tags exist so that a Render Blueprint sync, which deploys
+whatever `render.yaml` points at, lands on the image already running.
+
+The package must be **public** for Render to pull it without
+credentials. Check under the repo's **Packages** → `snake-arena` →
+**Package settings** → **Change visibility**. If it has to stay
+private, add a GHCR registry credential in Render (a token with
+`read:packages`) and reference it with `creds` in `render.yaml`.
+
 ## Render
 
 `render.yaml`, at the repo root, is a Render Blueprint defining both
-environments:
+environments as image-backed services:
 
-| Environment | Service            | Branch       | Database         |
-|-------------|--------------------|--------------|------------------|
-| Dev         | `snake-arena`      | `main`       | `snake-arena-db` |
-| Production  | `snake-arena-prod` | `production` | `snake-arena-db` |
+| Environment | Service            | Image URL in `render.yaml`            | Deployed by      | Database         |
+|-------------|--------------------|---------------------------------------|------------------|------------------|
+| Dev         | `snake-arena`      | `ghcr.io/gitilemac/snake-arena:dev`   | CI, on `main`    | `snake-arena-db` |
+| Production  | `snake-arena-prod` | `ghcr.io/gitilemac/snake-arena:prod`  | Promote, by hand | `snake-arena-db` |
 
-Both services build `snake-arena/Dockerfile`, use `/health` as their
-health check, and run on the free plan. They **share one Postgres
-database**, because Render's free tier allows only one active database
-(a second one is rejected with "cannot have more than one active tier
-database"). See *Caveats* below for what that means.
+Both use `/health` as their health check and run on the free plan.
+They **share one Postgres database**, because Render's free tier allows
+only one active database (a second one is rejected with "cannot have
+more than one active tier database"). See *Caveats* below.
 
-`/health` also returns the deployed commit (`{"status": "ok",
-"commit": "<sha>"}`), taken from the `RENDER_GIT_COMMIT` variable Render
-sets on each deploy. The workflows use it to tell when a new deploy is
-live. Outside Render, `commit` is `null`.
+Service URLs and the image name are written into the workflows
+(`DEV_URL`, `PROD_URL`, `IMAGE` in `deploy.yml` and `promote.yml`).
+Render appends a random suffix when a name is taken, so copy URLs from
+each service's page in the dashboard.
 
-The dev service keeps its original name because Render identifies
-Blueprint services by name. Renaming it would create a new service and
-leave the old one behind.
+### Pipeline
+
+1. **Test** (`ci.yml`, every PR and push to `main`): backend tests,
+   frontend tests, then the Docker Compose integration suite.
+2. **Build** (`ci.yml` job `build`, pushes to `main` only, after the
+   tests pass): build the image once and push
+   `ghcr.io/gitilemac/snake-arena:<YYYYMMDD-HHMMSS-shortsha>`.
+3. **Deploy to dev** (`ci.yml` job `deploy-dev`, which runs
+   `deploy.yml`): call dev's Render deploy hook with that exact tag,
+   wait until dev's `/health` reports it, move the `dev` tag to it, and
+   run `integration-tests/` against dev.
+4. **Promote to production** (`promote.yml`, run by hand): read the tag
+   from dev's `/health`, check the image exists and production isn't
+   already on it, summarize the commits that will ship, then run the
+   same `deploy.yml` against production (moving the `prod` tag).
+
+`deploy.yml` is the only place that deploys. Each environment's runs
+are serialized (`concurrency`), and the job runs in a GitHub environment
+named after the target (`dev` or `production`), so required reviewers
+on `production` turn every promotion into an approval step.
 
 ### First-time setup
 
-`render.yaml` is already applied as a Blueprint. To add production:
+Moving from Render building the repo to Render pulling images:
 
-1. Create the `production` branch **before** merging the change that
-   adds `snake-arena-prod`, so the new service has a branch to deploy:
-
-   ```bash
-   git fetch origin
-   git push origin origin/main:refs/heads/production
-   ```
-
-2. Merge the change to `main`. Render syncs the Blueprint and creates
-   `snake-arena-prod`. If it doesn't, open the Blueprint in the Render
-   dashboard and click **Manual Sync**.
-3. `render.yaml` used to define a `snake-arena-staging` service.
-   Removing a service from a Blueprint doesn't delete it, so delete it
-   in the Render dashboard (service → **Settings** → **Delete Web
-   Service**). Delete the `staging` branch once nothing on it is
-   missing from `main`.
-4. In GitHub, go to **Settings → Secrets and variables → Actions →
-   Variables** and set:
-
-   | Variable          | Value                          |
-   |-------------------|--------------------------------|
-   | `RENDER_URL_DEV`  | `snake-arena` service URL      |
-   | `RENDER_URL_PROD` | `snake-arena-prod` service URL |
-
-   Delete `RENDER_URL_STAGING` and `RENDER_URL_PRODUCTION`; nothing
-   reads them any more.
-5. Go to **Settings → Environments**, create an environment named
-   `production`, and add required reviewers so that every promotion
-   needs an approval.
-6. If `production` has branch protection, make sure the Promote
-   workflow can still push to it, or it will fail at the push.
-7. Once **Verify dev deploy** passes for the merge, run **Promote to
-   production** to bring production up to date.
-
-### How deploys happen
-
-- **Dev:** Render **auto-deploys every push** to `main`. The CI
-  workflow doesn't start or gate the deploy, because Render only
-  supports a static API key or deploy hook, not GitHub OIDC. Once
-  **CI** (`.github/workflows/ci.yml`) passes for the push, **Deploy**
-  (`.github/workflows/deploy.yml`) waits up to 15 minutes for dev's
-  `/health` to report that commit, then runs `integration-tests/`
-  against it. A broken deploy shows up as a failed run.
-- **Production:** only the manually-run **Promote to production**
-  workflow (`.github/workflows/promote.yml`) deploys it. It finds the
-  commit dev is running, checks that the commit is on `main` and passed
-  CI, smoke-tests dev, and waits for approval. Then it fast-forwards
-  `production` to that commit. Render deploys it, and the workflow
-  waits for production's `/health` to report the commit and runs
-  `integration-tests/` against production.
-- Production is verified inside Promote, not Deploy, because pushes
-  made with `GITHUB_TOKEN` don't trigger other workflows.
-- `GITHUB_TOKEN` also can't push a ref update that changes files under
-  `.github/workflows/`. If a promotion includes such a change, its push
-  is rejected. Add a `PROMOTE_TOKEN` repository secret (a fine-grained
-  token with Contents and Workflows write on this repo) and Promote
-  uses it instead.
-- Deploy is triggered by `workflow_run`, and GitHub only uses the copy
-  of `deploy.yml` on `main`.
+1. **Deploy hooks.** In Render, open each service → **Settings** →
+   **Deploy Hook** and copy the URL. In GitHub, go to **Settings →
+   Secrets and variables → Actions → Secrets** and add them as
+   `RENDER_DEPLOY_HOOK_DEV` (`snake-arena`) and
+   `RENDER_DEPLOY_HOOK_PROD` (`snake-arena-prod`). Treat them as
+   secrets: anyone with the URL can trigger a deploy.
+2. **Merge the change to `main`.** CI tests, builds and pushes the
+   first image, then tries to deploy it to dev.
+3. **Make the package public** (see *Registry* above).
+4. **Switch the services to the image.** Render syncs `render.yaml` on
+   merge (or open the Blueprint → **Manual Sync**). The services change
+   from building the repo to pulling `:dev` / `:prod`. Those tags don't
+   exist until the first deploys, so the sync's own deploys may fail;
+   the previous deploys keep serving.
+   - If Render refuses to change an existing service's runtime, delete
+     `snake-arena` and `snake-arena-prod` in the dashboard and sync
+     again to recreate them. Their URLs and deploy hooks will change:
+     update `DEV_URL`/`PROD_URL` in the workflows and both secrets.
+5. **Re-run the `Deploy to dev` job** of that CI run (if it failed
+   because the service wasn't switched yet). It deploys the image and
+   creates the `dev` tag.
+6. **Run Promote to production.** It deploys the same image and creates
+   the `prod` tag.
+7. **Clean up.** The `production` branch is no longer used and can be
+   deleted, along with any `PROMOTE_TOKEN` secret.
 
 ### Caveats
 
 - **Shared database.** Dev and production read and write the same
   data. Users and scores created in dev, and the `ci-smoke-*` user and
-  score every Deploy and Promote smoke run writes, appear on the
-  production leaderboard. A bug in a dev deploy can damage production
-  data. To separate them, add a second database on a paid plan (or use
-  a separate Render account) and point `snake-arena-prod` at it.
+  score every deploy's smoke run writes, appear on the production
+  leaderboard. A bug in a dev deploy can damage production data. To
+  separate them, add a second database on a paid plan (or use a
+  separate Render account) and point `snake-arena-prod` at it.
+- **Render pulls on every deploy** and doesn't keep old images, so
+  deleting an image from GHCR breaks rollbacks to it.
+- **Images accumulate** in GHCR, one per push to `main`. Prune old
+  timestamped tags from the package page if needed, but keep anything
+  you might roll back to.
 - **Free plans.** Web services spin down when idle, so the first request
   after a while is slow. Free databases expire after a limited period.
 - **`/leaderboard` on a hard refresh** returns the API's JSON instead of
@@ -157,13 +173,15 @@ leave the old one behind.
 
 ## Rolling back
 
-In the Render dashboard, open the service → **Deploys** → the last good
-deploy → **Rollback**. This reuses the old build, so there's no rebuild.
-Rolling back **turns off auto-deploy** for that service. Turn it back on
-once the fix has gone through dev.
+Every deployed image is still in the registry, so rolling back means
+deploying an older tag:
 
-After rolling back production, the `production` branch still points at
-the bad commit. That's fine: the next promotion fast-forwards past it,
-so a fix only has to land on `main` and pass dev. Turn auto-deploy back
-on for `snake-arena-prod` **before** running Promote, or Render won't
-deploy the push and Promote times out waiting for it.
+- **Render dashboard:** open the service → **Events**/**Deploys** → the
+  last good deploy → **Rollback**. Render pulls that deploy's image
+  again.
+- **Deploy hook:** pick a tag from the package page and run
+  `curl -X POST "$RENDER_DEPLOY_HOOK_PROD&imgURL=ghcr.io%2Fgitilemac%2Fsnake-arena%3A<tag>"`.
+
+Either way, the `prod` tag still points at the bad image, so a
+Blueprint sync would bring it back. The next promotion moves it again.
+Ship the fix through dev and promote as usual.

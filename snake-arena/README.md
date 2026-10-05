@@ -43,68 +43,56 @@ a hard refresh.
 ## Deploying to Render
 
 `render.yaml` (repo root) is a [Render Blueprint](https://render.com/docs/blueprint-spec)
-that runs this Docker image as two web services sharing one managed
-Postgres database (`snake-arena-db`):
+that runs two image-backed web services sharing one managed Postgres
+database (`snake-arena-db`). Neither builds anything; both pull the
+image CI pushed to GitHub Container Registry
+(`ghcr.io/gitilemac/snake-arena`):
 
-- **dev** (`snake-arena`) auto-deploys every push to `main`.
-- **production** (`snake-arena-prod`) deploys from the `production`
-  branch.
-
-Changes merge to `main` and land in dev. The manually-run **Promote to
-production** workflow then ships the commit dev is running: it
-fast-forwards `production` to it after an approval. See
-`_docs/release-process.md`.
+- **dev** (`snake-arena`) gets every image CI builds from `main`.
+- **production** (`snake-arena-prod`) gets the image dev is running,
+  when someone runs the **Promote to production** workflow.
 
 **Dev and production are not data-isolated.** Render's free tier
 allows only one active database, so anything dev writes (including CI's
 `ci-smoke-*` test users and scores) shows up on the production
-leaderboard. Setup steps, including the GitHub variables
-(`RENDER_URL_DEV`, `RENDER_URL_PROD`) and the `production` environment,
-are in `_docs/deployment.md`.
+leaderboard. Setup steps (deploy hook secrets, package visibility,
+service URLs in the workflows) are in `_docs/deployment.md`; the
+release flow is in `_docs/release-process.md`.
 
 The free plans in `render.yaml` are dev-only (Render expires free
 databases after a limited period, and free web services spin down when
-idle). Switch the `plan` fields to paid plans for anything
-long-lived. Tables are created automatically on first boot, and the
-backend serves both the API and the built frontend from the one
-service, same as the Docker Compose setup above.
+idle). Switch the `plan` fields to paid plans for anything long-lived.
+Tables are created automatically on first boot.
 
 ### CI/CD
 
-`.github/workflows/ci.yml` (**CI**) runs backend and frontend tests in
-parallel, then builds and boots the real `docker-compose.yml` stack
-(app + Postgres) and runs `integration-tests/` against it over HTTP —
-signup, submit score, leaderboard, SPA fallback — exercising the real
-database and static-file serving that the in-process unit tests don't
-touch.
+Three workflows in `.github/workflows/`:
 
-Render auto-deploys every push to `main` to dev independently of this
-workflow — Render has no GitHub OIDC support, only a static API
-key/deploy-hook secret, so deploys aren't driven from CI. Instead, once
-CI passes for a push, `.github/workflows/deploy.yml` (**Deploy**) waits
-until dev's `/health` reports that commit (Render sets
-`RENDER_GIT_COMMIT`) and then runs the same smoke suite against it, so
-a broken deploy shows up as a failed Deploy run rather than going
-unnoticed. `.github/workflows/promote.yml` (**Promote to production**)
-does the same check against production after promoting. Each smoke run
-writes a uniquely-named `ci-smoke-*` user and score into the shared
-leaderboard.
+- **CI** (`ci.yml`) runs backend and frontend tests in parallel, then
+  boots the real `docker-compose.yml` stack (app + Postgres) and runs
+  `integration-tests/` against it over HTTP. On pushes to `main` it
+  then **builds** the image once, tags it `YYYYMMDD-HHMMSS-shortsha`
+  (e.g. `20260818-163457-83242da`), pushes it to GHCR, and **deploys**
+  it to dev.
+- **Deploy** (`deploy.yml`) is called by the other two. It triggers the
+  service's Render deploy hook with the exact image tag, waits for
+  `/health` to report that tag, and runs the smoke suite against the
+  live service.
+- **Promote to production** (`promote.yml`) is run by hand. It reads
+  the tag dev is running and deploys that same image to production.
+
+Each smoke run writes a uniquely-named `ci-smoke-*` user and score into
+the shared leaderboard.
 
 ### Rolling back a bad deploy
 
-Render keeps a deploy history per service and can [roll back](https://render.com/docs/rollbacks)
-to any previous successful deploy, reusing its build artifact (fast, no
-rebuild): open the service in the Render dashboard → **Deploys** tab →
-find the last good deploy → **Rollback** → confirm.
+Every deployed image stays in the registry, so rolling back means
+deploying an older tag: use **Rollback** on a previous deploy in the
+Render dashboard, or call the service's deploy hook with an older
+`imgURL`. See *Rolling back* in `_docs/deployment.md`.
 
-Two things to know:
-
-- Rolling back **automatically disables auto-deploy** for that service,
-  so a bad commit can't immediately redeploy over your rollback. Fix the
-  underlying issue and re-enable auto-deploy (or trigger a fresh manual
-  deploy) once you're ready to move forward again.
-- Database schema changes are safe to roll back past here: tables are
-  created via `Base.metadata.create_all()` (backend/app/store.py), which
-  only ever adds tables/columns, never drops them, so an older deploy
-  keeps working against a newer database — it just ignores any columns
-  it doesn't know about.
+Database schema changes are safe to roll back past: tables are created
+via `Base.metadata.create_all()` (backend/app/store.py), which only
+ever adds tables, never drops them, so an older image keeps working
+against a newer database — it just ignores any columns it doesn't know
+about.
