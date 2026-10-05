@@ -22,6 +22,15 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
+      # OpenTelemetry `deployment.environment.name` (app/telemetry.py).
+      - key: DEPLOYMENT_ENVIRONMENT
+        value: dev
+      # Where to send traces/metrics (OTLP over HTTP). Set in the Render
+      # dashboard; with no endpoint, nothing is exported.
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      - key: OTEL_EXPORTER_OTLP_HEADERS
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: snake-arena-db
@@ -37,6 +46,15 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
+      # OpenTelemetry `deployment.environment.name` (app/telemetry.py).
+      - key: DEPLOYMENT_ENVIRONMENT
+        value: production
+      # Where to send traces/metrics (OTLP over HTTP). Set in the Render
+      # dashboard; with no endpoint, nothing is exported.
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      - key: OTEL_EXPORTER_OTLP_HEADERS
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: snake-arena-db

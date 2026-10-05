@@ -12,7 +12,7 @@ import secrets
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import Engine, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db import Base, database_url_from_env, make_engine, make_session_factory
@@ -60,6 +60,10 @@ class Store:
         self._watch_lock = asyncio.Lock()
         self._bot_game: BotGame = create_bot_game(seed=int(time.time() * 1000))
         self._last_tick_monotonic: float = time.monotonic()
+
+    @property
+    def engine(self) -> Engine:
+        return self._engine
 
     def _init_schema(self) -> None:
         Base.metadata.create_all(self._engine)

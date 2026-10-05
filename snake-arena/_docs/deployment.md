@@ -35,11 +35,51 @@ the `APP_VERSION` build argument, which CI sets. Images built without it
 | Variable       | Default                          | Notes                                              |
 |----------------|----------------------------------|----------------------------------------------------|
 | `DATABASE_URL` | `sqlite:///./snake_arena.db`     | Use `postgresql+psycopg://…` for Postgres. Plain `postgres://` or `postgresql://` URLs, like the ones Render provides, are rewritten to use psycopg automatically. |
+| `APP_VERSION`  | unset (`""` in local builds)     | The image tag. Baked in by CI's build job; reported by `/health` and as OpenTelemetry `service.version`. Don't set it by hand. |
+| `DEPLOYMENT_ENVIRONMENT` | `local`                | `dev` / `production` on Render (`render.yaml`). OpenTelemetry `deployment.environment.name`. |
+| `OTEL_SERVICE_NAME` | `snake-arena`               | OpenTelemetry `service.name`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset             | OTLP/HTTP endpoint for traces and metrics. Unset means nothing is exported. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | unset              | Auth headers for the endpoint, e.g. `Authorization=Basic …`. |
+| `OTEL_TRACES_EXPORTER` | unset                    | `console` prints spans to stdout, for local debugging. |
+| `OTEL_SDK_DISABLED` | unset                       | `true` turns OpenTelemetry off (the test suite does this). |
 
 The schema is created on startup (`Base.metadata.create_all()` in
 `backend/app/store.py`). There's no migration step, but existing tables
 are never altered either. See *Database changes* in
 [release-process.md](release-process.md).
+
+## Telemetry (OpenTelemetry)
+
+`backend/app/telemetry.py` sets up OpenTelemetry at startup:
+
+- **Traces** for every HTTP request (FastAPI instrumentation) and every
+  database query (SQLAlchemy instrumentation). `/health` is excluded,
+  because Render and the workflows poll it constantly.
+- **Metrics** from the same instrumentations (request durations,
+  connection pool usage).
+
+Every span and metric carries these resource attributes:
+
+| Attribute                     | Source                     | Example                     |
+|-------------------------------|----------------------------|-----------------------------|
+| `service.name`                | `OTEL_SERVICE_NAME`        | `snake-arena`               |
+| `deployment.environment.name` | `DEPLOYMENT_ENVIRONMENT`   | `production`                |
+| `deployment.environment`      | same (older attribute name, still used by many backends) | `production` |
+| `service.version`             | `APP_VERSION` (image tag)  | `20261005-120000-abc1234`   |
+
+Data is exported over **OTLP/HTTP** to whatever
+`OTEL_EXPORTER_OTLP_ENDPOINT` points at: an OpenTelemetry Collector or
+any backend that accepts OTLP (Grafana Cloud, Honeycomb, New Relic,
+etc.). Nothing is exported until it's set. On Render, set the endpoint
+and `OTEL_EXPORTER_OTLP_HEADERS` on each service under **Environment**.
+`render.yaml` declares them with `sync: false`, so their values live
+only in the dashboard.
+
+To see spans locally:
+
+```bash
+OTEL_TRACES_EXPORTER=console uv run uvicorn app.main:app --reload
+```
 
 ## Local: Docker Compose
 

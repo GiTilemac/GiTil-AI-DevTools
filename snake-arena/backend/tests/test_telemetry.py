@@ -1,0 +1,98 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from sqlalchemy import text
+
+from app.store import Store
+from app.telemetry import build_resource, setup_telemetry
+
+
+@pytest.fixture(autouse=True)
+def telemetry_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # conftest disables the SDK for the rest of the suite; with it
+    # disabled, SDK tracers record nothing.
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    for name in ("OTEL_SERVICE_NAME", "DEPLOYMENT_ENVIRONMENT", "APP_VERSION", "OTEL_RESOURCE_ATTRIBUTES"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_resource_defaults() -> None:
+    attributes = build_resource().attributes
+    assert attributes["service.name"] == "snake-arena"
+    assert attributes["deployment.environment.name"] == "local"
+    assert attributes["deployment.environment"] == "local"
+    assert "service.version" not in attributes
+
+
+def test_resource_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "production")
+    monkeypatch.setenv("APP_VERSION", "20261005-120000-abc1234")
+    attributes = build_resource().attributes
+    assert attributes["service.name"] == "snake-arena"
+    assert attributes["deployment.environment.name"] == "production"
+    assert attributes["deployment.environment"] == "production"
+    assert attributes["service.version"] == "20261005-120000-abc1234"
+
+
+def test_empty_version_is_omitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Local `docker build` without --build-arg sets APP_VERSION="".
+    monkeypatch.setenv("APP_VERSION", "")
+    assert "service.version" not in build_resource().attributes
+
+
+@pytest.fixture
+def instrumented(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, InMemorySpanExporter]]:
+    monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "dev")
+    monkeypatch.setenv("APP_VERSION", "20261005-120000-abc1234")
+
+    store = Store(database_url="sqlite://")
+    app = FastAPI()
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/count")
+    def count() -> dict[str, int]:
+        with store.engine.connect() as conn:
+            return {"n": conn.execute(text("SELECT 1")).scalar_one()}
+
+    exporter = InMemorySpanExporter()
+    setup_telemetry(app, store.engine, span_processor=SimpleSpanProcessor(exporter), set_global=False)
+    try:
+        yield TestClient(app), exporter
+    finally:
+        FastAPIInstrumentor.uninstrument_app(app)
+        SQLAlchemyInstrumentor().uninstrument()
+
+
+def test_requests_and_queries_are_traced_with_resource(
+    instrumented: tuple[TestClient, InMemorySpanExporter],
+) -> None:
+    client, exporter = instrumented
+    assert client.get("/count").json() == {"n": 1}
+
+    spans = exporter.get_finished_spans()
+    server = [s for s in spans if s.attributes.get("http.route") == "/count"]
+    queries = [s for s in spans if s.attributes.get("db.system") == "sqlite"]
+    assert server, [s.name for s in spans]
+    assert queries, [s.name for s in spans]
+
+    for span in server + queries:
+        assert span.resource.attributes["service.name"] == "snake-arena"
+        assert span.resource.attributes["deployment.environment.name"] == "dev"
+        assert span.resource.attributes["service.version"] == "20261005-120000-abc1234"
+
+
+def test_health_checks_are_not_traced(instrumented: tuple[TestClient, InMemorySpanExporter]) -> None:
+    client, exporter = instrumented
+    client.get("/health")
+    assert not [s for s in exporter.get_finished_spans() if s.attributes.get("http.route") == "/health"]
