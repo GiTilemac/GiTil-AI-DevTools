@@ -57,10 +57,11 @@ groups:
           description: >-
             {{ $value | humanizePercentage }} of game starts failed over the
             last 10 minutes in {{ $labels.deployment_environment_name }} on
-            version {{ $labels.service_version }}. Players see an error
-            instead of a game. Check the failures by error_type on the
-            dashboard, then follow the runbook: roll back if this started
-            with a deploy.
+            version {{ $labels.service_version }}. Those games aren't
+            tracked, and failures from exceptions usually mean the backend
+            is failing players elsewhere too (login, leaderboard). Check
+            the failures by error_type on the dashboard, then follow the
+            runbook: roll back if this started with a deploy.
           dashboard_url: >-
             http://localhost:3000/d/snake-arena-games?var-environment={{ $labels.deployment_environment_name }}&var-version={{ $labels.service_version }}&from=now-1h&to=now
           runbook_url: https://github.com/GiTilemac/GiTil-AI-DevTools/blob/main/snake-arena/_docs/runbooks/game-creation-failing.md

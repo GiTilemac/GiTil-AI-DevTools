@@ -34,7 +34,7 @@ tests:
               service_version: 20261006-120000-abc1234
             exp_annotations:
               summary: "snake-arena (production, 20261006-120000-abc1234): players can't start games"
-              description: "50% of game starts failed over the last 10 minutes in production on version 20261006-120000-abc1234. Players see an error instead of a game. Check the failures by error_type on the dashboard, then follow the runbook: roll back if this started with a deploy."
+              description: "50% of game starts failed over the last 10 minutes in production on version 20261006-120000-abc1234. Those games aren't tracked, and failures from exceptions usually mean the backend is failing players elsewhere too (login, leaderboard). Check the failures by error_type on the dashboard, then follow the runbook: roll back if this started with a deploy."
               dashboard_url: "http://localhost:3000/d/snake-arena-games?var-environment=production&var-version=20261006-120000-abc1234&from=now-1h&to=now"
               runbook_url: https://github.com/GiTilemac/GiTil-AI-DevTools/blob/main/snake-arena/_docs/runbooks/game-creation-failing.md
 
