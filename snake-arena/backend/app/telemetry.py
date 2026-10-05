@@ -1,0 +1,125 @@
+"""OpenTelemetry setup: traces and metrics for every HTTP request (FastAPI)
+and database query (SQLAlchemy), all tagged with which service,
+environment and deployed version produced them.
+
+Resource attributes, read from the environment:
+
+- `service.name`: `OTEL_SERVICE_NAME`, default `snake-arena`.
+- `deployment.environment.name`: `DEPLOYMENT_ENVIRONMENT` (`dev` /
+  `production` on Render, see render.yaml), default `local`. Also sent
+  as the older `deployment.environment`, which many backends still key
+  on.
+- `service.version`: `APP_VERSION`, the image tag baked in by CI
+  (YYYYMMDD-HHMMSS-shortsha, see ../Dockerfile). Omitted when unset.
+
+Export is OTLP over HTTP, configured with the standard OTEL_EXPORTER_OTLP_*
+variables (endpoint, headers). With no endpoint set, telemetry is still
+recorded but not exported, so local runs and tests need no collector.
+`OTEL_TRACES_EXPORTER=console` prints spans to stdout instead, for
+local debugging.
+"""
+
+from __future__ import annotations
+
+import os
+
+from fastapi import FastAPI
+from opentelemetry import metrics, trace
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import MetricReader, PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+    SpanExporter,
+    SpanProcessor,
+)
+from sqlalchemy import Engine
+
+DEFAULT_SERVICE_NAME = "snake-arena"
+DEFAULT_ENVIRONMENT = "local"
+
+
+def build_resource() -> Resource:
+    attributes: dict[str, str] = {
+        "service.name": os.environ.get("OTEL_SERVICE_NAME") or DEFAULT_SERVICE_NAME,
+        "deployment.environment.name": os.environ.get("DEPLOYMENT_ENVIRONMENT") or DEFAULT_ENVIRONMENT,
+    }
+    attributes["deployment.environment"] = attributes["deployment.environment.name"]
+    version = os.environ.get("APP_VERSION")
+    if version:
+        attributes["service.version"] = version
+    # Resource.create also merges in OTEL_RESOURCE_ATTRIBUTES; the
+    # attributes above take precedence over it.
+    return Resource.create(attributes)
+
+
+def _otlp_configured(signal: str) -> bool:
+    return bool(
+        os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+        or os.environ.get(f"OTEL_EXPORTER_OTLP_{signal}_ENDPOINT")
+    )
+
+
+def _default_span_processor() -> SpanProcessor | None:
+    exporter: SpanExporter
+    if os.environ.get("OTEL_TRACES_EXPORTER") == "console":
+        exporter = ConsoleSpanExporter()
+    elif _otlp_configured("TRACES"):
+        exporter = OTLPSpanExporter()
+    else:
+        return None
+    return BatchSpanProcessor(exporter)
+
+
+def _default_metric_reader() -> MetricReader | None:
+    if not _otlp_configured("METRICS"):
+        return None
+    return PeriodicExportingMetricReader(OTLPMetricExporter())
+
+
+def setup_telemetry(
+    app: FastAPI,
+    engine: Engine,
+    *,
+    span_processor: SpanProcessor | None = None,
+    metric_reader: MetricReader | None = None,
+    set_global: bool = True,
+) -> TracerProvider:
+    """Instruments `app` and `engine`. The exporters default to what the
+    environment configures; tests pass an in-memory `span_processor` /
+    `metric_reader` and `set_global=False` instead, since OpenTelemetry's
+    global providers can only be set once per process."""
+    resource = build_resource()
+
+    tracer_provider = TracerProvider(resource=resource)
+    span_processor = span_processor or _default_span_processor()
+    if span_processor is not None:
+        tracer_provider.add_span_processor(span_processor)
+
+    metric_reader = metric_reader or _default_metric_reader()
+    meter_provider = MeterProvider(
+        resource=resource, metric_readers=[metric_reader] if metric_reader else []
+    )
+
+    if set_global:
+        trace.set_tracer_provider(tracer_provider)
+        metrics.set_meter_provider(meter_provider)
+
+    FastAPIInstrumentor.instrument_app(
+        app,
+        tracer_provider=tracer_provider,
+        meter_provider=meter_provider,
+        # Health checks run every few seconds from Render and the deploy
+        # workflows; tracing them would drown out real traffic.
+        excluded_urls="/health",
+    )
+    SQLAlchemyInstrumentor().instrument(
+        engine=engine, tracer_provider=tracer_provider, meter_provider=meter_provider
+    )
+    return tracer_provider

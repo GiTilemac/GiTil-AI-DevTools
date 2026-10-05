@@ -8,6 +8,9 @@ import os
 # it (e.g. to a real Postgres URL) to run the same suite against another
 # backend.
 os.environ.setdefault("DATABASE_URL", "sqlite://")
+# Skip app.main's telemetry setup; test_telemetry.py instruments its own
+# app with in-memory exporters instead.
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 import pytest
 from fastapi.testclient import TestClient

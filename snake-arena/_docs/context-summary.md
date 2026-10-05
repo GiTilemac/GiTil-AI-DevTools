@@ -72,6 +72,17 @@ describe the frontend as mock-backed — safe to trust again.
 
 ## Recent history (newest first)
 
+- *(branch `opentelemetry`, 2026-10-05)* — OpenTelemetry in the
+  backend (`app/telemetry.py`, wired in `app/main.py`): FastAPI and
+  SQLAlchemy traces + metrics, `/health` excluded, exported over
+  OTLP/HTTP only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Resource:
+  `service.name` (`snake-arena`), `deployment.environment[.name]`
+  (`DEPLOYMENT_ENVIRONMENT`, set per service in `render.yaml`),
+  `service.version` (`APP_VERSION` image tag). Tests set
+  `OTEL_SDK_DISABLED=true` in conftest; `tests/test_telemetry.py` uses
+  in-memory exporters. Backend: Grafana Cloud OTLP gateway
+  (`otlp-gateway-prod-eu-west-2`, endpoint in `render.yaml`; the auth
+  header is a dashboard-only Render env var). No self-hosted collector.
 - *(branch `build-push-image`, 2026-10-05)* — Split delivery into
   **build** and **deploy**. CI's `build` job (pushes to `main`, after
   tests) builds the image once and pushes

@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.routers import auth, leaderboard, watch
+from app.store import store
+from app.telemetry import setup_telemetry
 
 app = FastAPI(title="Snake Arena Backend API", version="1.0.0")
 
@@ -24,6 +26,11 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(leaderboard.router)
 app.include_router(watch.router)
+
+# OTEL_SDK_DISABLED is OpenTelemetry's standard off switch; the test
+# suite sets it so tests can install their own in-memory exporters.
+if os.environ.get("OTEL_SDK_DISABLED", "").lower() != "true":
+    setup_telemetry(app, store.engine)
 
 
 @app.get("/health")

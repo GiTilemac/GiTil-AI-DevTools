@@ -35,11 +35,71 @@ the `APP_VERSION` build argument, which CI sets. Images built without it
 | Variable       | Default                          | Notes                                              |
 |----------------|----------------------------------|----------------------------------------------------|
 | `DATABASE_URL` | `sqlite:///./snake_arena.db`     | Use `postgresql+psycopg://…` for Postgres. Plain `postgres://` or `postgresql://` URLs, like the ones Render provides, are rewritten to use psycopg automatically. |
+| `APP_VERSION`  | unset (`""` in local builds)     | The image tag. Baked in by CI's build job; reported by `/health` and as OpenTelemetry `service.version`. Don't set it by hand. |
+| `DEPLOYMENT_ENVIRONMENT` | `local`                | `dev` / `production` on Render (`render.yaml`). OpenTelemetry `deployment.environment.name`. |
+| `OTEL_SERVICE_NAME` | `snake-arena`               | OpenTelemetry `service.name`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset             | OTLP/HTTP endpoint for traces and metrics. Unset means nothing is exported. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | unset              | Auth headers for the endpoint, e.g. `Authorization=Basic …`. |
+| `OTEL_TRACES_EXPORTER` | unset                    | `console` prints spans to stdout, for local debugging. |
+| `OTEL_SDK_DISABLED` | unset                       | `true` turns OpenTelemetry off (the test suite does this). |
 
 The schema is created on startup (`Base.metadata.create_all()` in
 `backend/app/store.py`). There's no migration step, but existing tables
 are never altered either. See *Database changes* in
 [release-process.md](release-process.md).
+
+## Telemetry (OpenTelemetry)
+
+`backend/app/telemetry.py` sets up OpenTelemetry at startup:
+
+- **Traces** for every HTTP request (FastAPI instrumentation) and every
+  database query (SQLAlchemy instrumentation). `/health` is excluded,
+  because Render and the workflows poll it constantly.
+- **Metrics** from the same instrumentations (request durations,
+  connection pool usage).
+
+Every span and metric carries these resource attributes:
+
+| Attribute                     | Source                     | Example                     |
+|-------------------------------|----------------------------|-----------------------------|
+| `service.name`                | `OTEL_SERVICE_NAME`        | `snake-arena`               |
+| `deployment.environment.name` | `DEPLOYMENT_ENVIRONMENT`   | `production`                |
+| `deployment.environment`      | same (older attribute name, still used by many backends) | `production` |
+| `service.version`             | `APP_VERSION` (image tag)  | `20261005-120000-abc1234`   |
+
+Data is exported over **OTLP/HTTP** to whatever
+`OTEL_EXPORTER_OTLP_ENDPOINT` points at; nothing is exported while it's
+unset.
+
+### Backend: Grafana Cloud
+
+Both Render services send straight to Grafana Cloud's OTLP gateway,
+`https://otlp-gateway-prod-eu-west-2.grafana.net/otlp` (set in
+`render.yaml`). Traces land in Tempo and metrics in Mimir. There's no
+self-hosted OpenTelemetry Collector: on Render's free plan it would
+spin down when idle and drop data, and nothing here needs one yet
+(sampling, filtering, fan-out). Adding one later only changes the
+endpoint.
+
+The gateway needs an auth header, which contains the Grafana token, so
+it isn't in the repo:
+
+1. In Grafana Cloud, open the stack → **Connections → OpenTelemetry
+   (OTLP)** and generate a token. Copy the `OTEL_EXPORTER_OTLP_HEADERS`
+   value it shows (`Authorization=Basic%20<base64>`; keep the `%20`).
+2. In Render, add it as `OTEL_EXPORTER_OTLP_HEADERS` under
+   **Environment** on both `snake-arena` and `snake-arena-prod`.
+
+Without the header, the exporter logs `401` errors and nothing arrives.
+In Grafana, **Explore → Tempo** shows traces; filter with
+`resource.deployment.environment="production"` (or `"dev"`) and group
+by `resource.service.version` to compare releases.
+
+To see spans locally:
+
+```bash
+OTEL_TRACES_EXPORTER=console uv run uvicorn app.main:app --reload
+```
 
 ## Local: Docker Compose
 
