@@ -128,6 +128,23 @@ jobs:
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Seed the dev/prod tags if missing
+        # render.yaml points the services at :dev / :prod, and Render
+        # refuses a Blueprint sync while those tags don't exist. Normally
+        # deploy.yml moves them after each deploy and this does nothing;
+        # it only creates them on first setup (or if they were deleted).
+        env:
+          IMAGE: ghcr.io/gitilemac/snake-arena
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          for moving in dev prod; do
+            if docker buildx imagetools inspect "$IMAGE:$moving" > /dev/null 2>&1; then
+              echo "$IMAGE:$moving exists; leaving it alone"
+            else
+              docker buildx imagetools create -t "$IMAGE:$moving" "$IMAGE:$TAG"
+              echo "Created $IMAGE:$moving -> $TAG"
+            fi
+          done
 
   deploy-dev:
     name: Deploy to dev

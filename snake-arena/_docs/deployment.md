@@ -74,6 +74,8 @@ Render pulls public images from it without credentials.
 Only the timestamped tags are ever deployed by the workflows. The
 `dev`/`prod` tags exist so that a Render Blueprint sync, which deploys
 whatever `render.yaml` points at, lands on the image already running.
+Render refuses to sync while they don't exist, so CI's build job
+creates any that are missing, pointing at the image it just built.
 
 The package must be **public** for Render to pull it without
 credentials. Check under the repo's **Packages** → `snake-arena` →
@@ -137,18 +139,21 @@ Moving from Render building the repo to Render pulling images:
 3. **Make the package public** (see *Registry* above).
 4. **Switch the services to the image.** Render syncs `render.yaml` on
    merge (or open the Blueprint → **Manual Sync**). The services change
-   from building the repo to pulling `:dev` / `:prod`. Those tags don't
-   exist until the first deploys, so the sync's own deploys may fail;
-   the previous deploys keep serving.
+   from building the repo to pulling `:dev` / `:prod`. Render refuses
+   the sync ("image … not found") until those tags exist; CI's build
+   job creates them, pointing at its image, whenever they're missing.
+   So on first setup production also starts on that build, the same
+   commit as dev.
    - If Render refuses to change an existing service's runtime, delete
      `snake-arena` and `snake-arena-prod` in the dashboard and sync
      again to recreate them. Their URLs and deploy hooks will change:
      update `DEV_URL`/`PROD_URL` in the workflows and both secrets.
 5. **Re-run the `Deploy to dev` job** of that CI run (if it failed
    because the service wasn't switched yet). It deploys the image and
-   creates the `dev` tag.
-6. **Run Promote to production.** It deploys the same image and creates
-   the `prod` tag.
+   confirms it with the smoke tests.
+6. **Run Promote to production.** Production already runs that image
+   after the sync, so Promote reports it's up to date until the next
+   change reaches dev.
 7. **Clean up.** The `production` branch is no longer used and can be
    deleted, along with any `PROMOTE_TOKEN` secret.
 
