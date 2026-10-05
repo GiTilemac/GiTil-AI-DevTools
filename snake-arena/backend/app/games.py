@@ -29,6 +29,7 @@ count in a low-traffic app that restarts on every deploy.
 
 from __future__ import annotations
 
+import os
 import secrets
 import threading
 import time
@@ -42,7 +43,9 @@ from opentelemetry.metrics import CallbackOptions, Meter, Observation
 from app.models import GameMode
 from app.telemetry import deployment_attributes
 
-SESSION_TIMEOUT_SECONDS = 120.0
+# GAME_SESSION_TIMEOUT_SECONDS overrides it, e.g. to exercise expiry
+# locally without waiting two minutes.
+SESSION_TIMEOUT_SECONDS = float(os.environ.get("GAME_SESSION_TIMEOUT_SECONDS", "120"))
 # The start endpoint is unauthenticated, so cap how many sessions can
 # be held in memory at once.
 MAX_ACTIVE_SESSIONS = 10_000
