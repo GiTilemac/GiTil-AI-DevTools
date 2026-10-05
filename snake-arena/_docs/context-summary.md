@@ -79,10 +79,10 @@ describe the frontend as mock-backed — safe to trust again.
   shared `snake-arena-db` (free tier allows one database; separate prod
   DB was rejected to avoid a paid plan, so they're not data-isolated). `/health` now returns the
   deployed commit from `RENDER_GIT_COMMIT`. CI runs on `main` only;
-  Deploy verifies dev (`RENDER_URL_DEV`); the manual
+  Deploy verifies dev (`DEV_URL`, hardcoded in the workflow); the manual
   `promote.yml` fast-forwards `production` to the commit dev is
   running, behind the `production` GitHub environment's approval, and
-  verifies production (`RENDER_URL_PROD`). See `deployment.md` and
+  verifies production (`PROD_URL`). See `deployment.md` and
   `release-process.md`. Earlier Render/CI commits
   (`3752888`..`57e0be2`) are not summarized here; see git log.
 0. *(uncommitted)* — Added Postgres support (`psycopg[binary]` dependency
