@@ -25,10 +25,12 @@ services:
       # OpenTelemetry `deployment.environment.name` (app/telemetry.py).
       - key: DEPLOYMENT_ENVIRONMENT
         value: dev
-      # Where to send traces/metrics (OTLP over HTTP). Set in the Render
-      # dashboard; with no endpoint, nothing is exported.
+      # Traces/metrics go to Grafana Cloud over OTLP/HTTP. The auth
+      # header holds the Grafana token, so its value is set only in the
+      # Render dashboard (sync: false); without it Grafana rejects the
+      # data with 401.
       - key: OTEL_EXPORTER_OTLP_ENDPOINT
-        sync: false
+        value: https://otlp-gateway-prod-eu-west-2.grafana.net/otlp
       - key: OTEL_EXPORTER_OTLP_HEADERS
         sync: false
       - key: DATABASE_URL
@@ -49,10 +51,12 @@ services:
       # OpenTelemetry `deployment.environment.name` (app/telemetry.py).
       - key: DEPLOYMENT_ENVIRONMENT
         value: production
-      # Where to send traces/metrics (OTLP over HTTP). Set in the Render
-      # dashboard; with no endpoint, nothing is exported.
+      # Traces/metrics go to Grafana Cloud over OTLP/HTTP. The auth
+      # header holds the Grafana token, so its value is set only in the
+      # Render dashboard (sync: false); without it Grafana rejects the
+      # data with 401.
       - key: OTEL_EXPORTER_OTLP_ENDPOINT
-        sync: false
+        value: https://otlp-gateway-prod-eu-west-2.grafana.net/otlp
       - key: OTEL_EXPORTER_OTLP_HEADERS
         sync: false
       - key: DATABASE_URL
