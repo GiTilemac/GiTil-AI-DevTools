@@ -18,18 +18,21 @@ groups:
       #   - for 5 minutes: sustained, so one burst doesn't page anyone.
       # Grouped per environment and version, so a bad release shows up
       # as that release, and dev failures never look like production.
+      # `invalid_mode` is excluded: the frontend only sends valid modes,
+      # so those come from other clients (POST /games is open) and
+      # don't affect players.
       - alert: GameCreationFailing
         # The ratio comes first so the alert's value ($value) is the
         # failure rate.
         expr: |
           (
             sum by (job, deployment_environment_name, service_version) (
-              increase(snake_arena_games_creation_failures_total[10m])
+              increase(snake_arena_games_creation_failures_total{error_type!="invalid_mode"}[10m])
             )
             /
             (
               sum by (job, deployment_environment_name, service_version) (
-                increase(snake_arena_games_creation_failures_total[10m])
+                increase(snake_arena_games_creation_failures_total{error_type!="invalid_mode"}[10m])
               )
               +
               sum by (job, deployment_environment_name, service_version) (
@@ -40,7 +43,7 @@ groups:
           and
           (
             sum by (job, deployment_environment_name, service_version) (
-              increase(snake_arena_games_creation_failures_total[10m])
+              increase(snake_arena_games_creation_failures_total{error_type!="invalid_mode"}[10m])
             ) >= 3
           )
         for: 5m

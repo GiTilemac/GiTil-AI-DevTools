@@ -95,7 +95,7 @@ JSON, then pick the stack's Prometheus data source in *Data source*.
 
 - **GameCreationFailing** (critical): at least 20% of game starts, and
   at least 3, failed over 10 minutes, for 5 minutes, per environment and
-  version. Labels: `service`, `environment`, `version`, `owner`,
+  version. `invalid_mode` rejections are excluded (not from players). Labels: `service`, `environment`, `version`, `owner`,
   `severity`. Annotations: `summary`, `description`, `dashboard_url`
   (the games dashboard filtered to that environment and version),
   `runbook_url` (`../_docs/runbooks/game-creation-failing.md`).

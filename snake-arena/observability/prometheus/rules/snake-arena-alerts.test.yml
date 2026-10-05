@@ -77,3 +77,16 @@ tests:
       - eval_time: 20m
         alertname: GameCreationFailing
         exp_alerts: []
+
+  # A client spamming invalid modes: 100% "failures", none affecting
+  # players. Doesn't count towards the alert.
+  - interval: 1m
+    input_series:
+      - series: 'snake_arena_games_creation_failures_total{job="snake-arena", deployment_environment_name="production", service_version="v3", error_type="invalid_mode"}'
+        values: "0+10x30"
+      - series: 'snake_arena_games_created_total{job="snake-arena", deployment_environment_name="production", service_version="v3", game_mode="walls"}'
+        values: "0+1x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: GameCreationFailing
+        exp_alerts: []

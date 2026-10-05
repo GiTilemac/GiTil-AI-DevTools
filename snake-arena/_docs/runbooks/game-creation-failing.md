@@ -2,6 +2,8 @@
 
 **Alert:** at least 20% of game starts (and at least 3) failed over 10
 minutes, sustained for 5 minutes, in one environment and version.
+`invalid_mode` rejections don't count: the frontend only sends valid
+modes, so they come from other clients.
 Defined in `observability/prometheus/rules/snake-arena-alerts.yml`.
 
 **Impact:** players press a key to start and the backend rejects or
@@ -20,7 +22,7 @@ On the dashboard, look at **Creation failures** by `error_type`:
 
 | `error_type`       | Meaning                                        | Likely cause |
 |--------------------|------------------------------------------------|--------------|
-| `invalid_mode`     | Request had a missing or unknown `mode`        | Frontend and backend disagree on modes, usually a release that changed one of them; or a client/bot sending junk |
+| `invalid_mode`     | Request had a missing or unknown `mode`. Not part of the alert, but visible on the dashboard | A client/bot sending junk; or, if it jumps after a release, frontend and backend disagreeing on modes |
 | `too_many_games`   | 10,000 sessions in memory already              | Abandoned sessions not expiring, or a flood of starts (abuse) |
 | an exception class (e.g. `RuntimeError`) | Unexpected error in the backend | A bug, or a dependency failing |
 
