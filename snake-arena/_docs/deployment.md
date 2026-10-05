@@ -88,6 +88,11 @@ sum by (error_type) (increase(snake_arena_games_creation_failures_total[1h]))
 Each smoke-test run (Deploy workflow) starts and ends one game, so it
 shows up in `games.created`.
 
+A Grafana dashboard for these, filterable by environment and version,
+is in `observability/grafana/provisioning/dashboards/snake-arena-games.json`
+(preloaded in the local stack; importable into Grafana Cloud). See
+[observability/README.md](../observability/README.md).
+
 ### Resource attributes
 
 Every span and metric carries these resource attributes:

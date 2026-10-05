@@ -18,6 +18,13 @@ app/telemetry.py) plus `game.mode` where known:
   starts that were rejected - `invalid_mode`, `too_many_games` - or
   failed unexpectedly (the exception's class name).
 - `snake_arena.games.active` (gauge): sessions currently in progress.
+
+The two counters are observable (reported from totals kept here) rather
+than incremented directly, so every mode and known error type is
+reported from 0 as soon as the app starts. Otherwise a series' first
+sample would already include the games counted before it, and
+Prometheus' increase()/rate() would miss them - a big share of the
+count in a low-traffic app that restarts on every deploy.
 """
 
 from __future__ import annotations
@@ -68,12 +75,22 @@ class GameSessions:
         self._max_active = max_active
         self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}
+        self._created: dict[GameMode, int] = {mode: 0 for mode in GameMode}
+        # (error.type, game.mode or None) -> count; the expected failures
+        # start at 0, unexpected ones are added when they first happen.
+        self._failures: dict[tuple[str, GameMode | None], int] = {("invalid_mode", None): 0}
+        for mode in GameMode:
+            self._failures[("too_many_games", mode)] = 0
 
-        self._created = meter.create_counter(
-            "snake_arena.games.created", unit="{game}", description="Games started."
+        meter.create_observable_counter(
+            "snake_arena.games.created",
+            callbacks=[self._observe_created],
+            unit="{game}",
+            description="Games started.",
         )
-        self._failures = meter.create_counter(
+        meter.create_observable_counter(
             "snake_arena.games.creation_failures",
+            callbacks=[self._observe_failures],
             unit="{failure}",
             description="Game starts that were rejected or failed.",
         )
@@ -98,14 +115,13 @@ class GameSessions:
                 last_seen=now,
             )
             self._sessions[session.id] = session
-        self._created.add(1, {**deployment_attributes(), "game.mode": mode.value})
+            self._created[mode] += 1
         return session
 
     def record_failure(self, error_type: str, mode: GameMode | None = None) -> None:
-        attributes = {**deployment_attributes(), "error.type": error_type}
-        if mode is not None:
-            attributes["game.mode"] = mode.value
-        self._failures.add(1, attributes)
+        with self._lock:
+            key = (error_type, mode)
+            self._failures[key] = self._failures.get(key, 0) + 1
 
     def heartbeat(self, session_id: str) -> bool:
         now = self._clock()
@@ -133,11 +149,31 @@ class GameSessions:
     def reset(self) -> None:
         with self._lock:
             self._sessions.clear()
+            self._created = dict.fromkeys(self._created, 0)
+            self._failures = dict.fromkeys(self._failures, 0)
 
     def _expire(self, now: float) -> None:
         stale = [sid for sid, s in self._sessions.items() if now - s.last_seen > self._timeout]
         for sid in stale:
             del self._sessions[sid]
+
+    def _observe_created(self, _options: CallbackOptions) -> Iterable[Observation]:
+        common = deployment_attributes()
+        with self._lock:
+            created = dict(self._created)
+        return [Observation(n, {**common, "game.mode": mode.value}) for mode, n in created.items()]
+
+    def _observe_failures(self, _options: CallbackOptions) -> Iterable[Observation]:
+        common = deployment_attributes()
+        with self._lock:
+            failures = dict(self._failures)
+        observations = []
+        for (error_type, mode), n in failures.items():
+            attributes = {**common, "error.type": error_type}
+            if mode is not None:
+                attributes["game.mode"] = mode.value
+            observations.append(Observation(n, attributes))
+        return observations
 
     def _observe_active(self, _options: CallbackOptions) -> Iterable[Observation]:
         # One point per mode, zeros included, so the series don't

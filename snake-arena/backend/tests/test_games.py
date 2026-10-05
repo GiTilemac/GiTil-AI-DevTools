@@ -161,8 +161,14 @@ def test_creation_failures_by_reason(
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "TOO_MANY_GAMES"
 
-    failures = {a["error.type"]: v for a, v in points(reader, "snake_arena.games.creation_failures")}
-    assert failures == {"invalid_mode": 1, "too_many_games": 1}
+    failures = {
+        (a["error.type"], a.get("game.mode")): v for a, v in points(reader, "snake_arena.games.creation_failures")
+    }
+    assert failures == {
+        ("invalid_mode", None): 1,
+        ("too_many_games", "walls"): 1,
+        ("too_many_games", "pass-through"): 0,
+    }
     assert value(reader, "snake_arena.games.created") == 3
     for attributes, _ in points(reader, "snake_arena.games.creation_failures"):
         assert attributes["deployment.environment.name"] == "production"
@@ -180,7 +186,18 @@ def test_unexpected_errors_count_as_failures(
 
     monkeypatch.setattr(tracked, "start", broken)
     assert api_with_metrics.post("/games", json={"mode": "walls"}).status_code == 500
-    assert points(reader, "snake_arena.games.creation_failures") == [
+    assert [p for p in points(reader, "snake_arena.games.creation_failures") if p[1]] == [
         ({"deployment.environment.name": "production", "service.version": VERSION,
           "error.type": "RuntimeError", "game.mode": "walls"}, 1)
     ]
+
+
+def test_counters_report_zero_before_anything_happens(
+    tracked: GameSessions, reader: InMemoryMetricReader
+) -> None:
+    # So the first sample a backend sees is 0 and rate()/increase() count
+    # every game from the start.
+    created = {a["game.mode"]: v for a, v in points(reader, "snake_arena.games.created")}
+    assert created == {"walls": 0, "pass-through": 0}
+    failures = points(reader, "snake_arena.games.creation_failures")
+    assert failures and all(v == 0 for _, v in failures)

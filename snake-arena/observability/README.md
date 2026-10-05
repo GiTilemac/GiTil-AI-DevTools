@@ -31,7 +31,8 @@ docker compose up -d                 # GRAFANA_PORT=3001 docker compose up -d if
 
 Open Grafana at http://localhost:3000 and log in as `admin` / `admin`
 (set `GRAFANA_ADMIN_PASSWORD` to change it). Prometheus, Tempo and Loki
-are already set up as data sources.
+are already set up as data sources, and the **Snake Arena - Games**
+dashboard is preloaded (Dashboards → snake-arena).
 
 ### Send the app's telemetry here
 
@@ -72,6 +73,22 @@ links to the logs from the same trace.
 `service_version` is only set for images built by CI. Local builds
 report no version.
 
+## Games dashboard
+
+`grafana/provisioning/dashboards/snake-arena-games.json`:
+
+- **Filters:** *Environment* and *Version* (multi-select, *All* by
+  default). The version list only offers versions seen in the selected
+  environments. *Data source* picks the Prometheus to read from.
+- **Stats** for the selected time range: active games now, games
+  created, creation failures, failure rate.
+- **Graphs:** active games by mode, active games by environment and
+  version (to compare a new release with the previous one), games
+  created per minute by mode, creation failures by `error_type`.
+
+To use it in Grafana Cloud: **Dashboards → New → Import**, upload the
+JSON, then pick the stack's Prometheus data source in *Data source*.
+
 ## Files
 
 | Path                                   | What it configures                       |
@@ -83,7 +100,7 @@ report no version.
 | `prometheus/prometheus.yml`            | OTLP receiver, promoted labels            |
 | `loki/loki.yaml`                       | Single-process Loki, filesystem storage   |
 | `grafana/provisioning/datasources/`    | Data sources and the links between them   |
-| `grafana/provisioning/dashboards/`     | Drop dashboard JSON here to load it       |
+| `grafana/provisioning/dashboards/`     | Dashboards loaded on startup (the games dashboard; add more JSON here) |
 
 ## Stop it
 
