@@ -92,7 +92,14 @@ jobs:
             exit 1
           fi
           img=$(jq -rn --arg u "$IMAGE:$TAG" '$u | @uri')
-          curl -fsS -X POST "$HOOK&imgURL=$img" > /dev/null
+          status=$(curl -sS -o response.txt -w '%{http_code}' -X POST "$HOOK&imgURL=$img")
+          if [ "$status" -ge 300 ]; then
+            echo "Render rejected the deploy (HTTP $status):" >&2
+            cat response.txt >&2
+            echo >&2
+            echo "A 400 usually means the service isn't image-backed yet, or its image URL in Render doesn't match $IMAGE." >&2
+            exit 1
+          fi
           echo "Asked Render to deploy $IMAGE:$TAG"
 
       - name: Wait for the image to be live
